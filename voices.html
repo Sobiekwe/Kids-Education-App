@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voice check</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <h1>Voice check</h1>
+    <p class="muted">
+      Lists every text-to-speech voice available on THIS device/browser.
+      Tap "Play" to hear each one say a sample word. Whichever sounds
+      clearest, copy its exact name and paste it into
+      <code>preferredVoiceName</code> in <code>js/config.js</code>, then
+      redeploy. This page isn't linked from the app — it's just for you.
+    </p>
+    <div id="list" class="stack"></div>
+    <a href="/" class="btn-link">Back to app</a>
+  </div>
+  <script type="module">
+    import { listVoices, speakWithVoice } from "./js/tts.js";
+
+    function render() {
+      const voices = listVoices().filter((v) => v.lang.startsWith("en"));
+      const list = document.getElementById("list");
+      if (!voices.length) {
+        list.innerHTML = `<p class="muted">No English voices reported yet — try reloading in a second.</p>`;
+        return;
+      }
+      list.innerHTML = voices
+        .map(
+          (v, i) => `
+        <div class="card" style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px;">
+          <div>
+            <strong>${v.name}</strong>
+            <div class="muted">${v.lang}${v.localService ? "" : " (needs internet)"}</div>
+          </div>
+          <button class="btn-secondary" style="width:auto" data-i="${i}">Play</button>
+        </div>
+      `
+        )
+        .join("");
+      list.querySelectorAll("button[data-i]").forEach((btn) => {
+        btn.onclick = () => speakWithVoice("inferior, as in, the cheap toy felt inferior.", voices[btn.dataset.i]);
+      });
+    }
+
+    if (typeof speechSynthesis !== "undefined") {
+      render();
+      speechSynthesis.onvoiceschanged = render;
+    } else {
+      document.getElementById("list").innerHTML = `<p class="muted">Speech synthesis isn't supported in this browser.</p>`;
+    }
+  </script>
+</body>
+</html>

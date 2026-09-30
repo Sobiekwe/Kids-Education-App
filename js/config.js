@@ -28,4 +28,10 @@ export const CONFIG = {
   // Word list version tag (must match a list_version value in the `words`
   // table — see data/schema.sql and data/words.js)
   listVersion: "two-bee-grade4-2026-2027",
+
+  // Voice (F09). Leave null to auto-pick the clearest available US-English
+  // voice. To force a specific one, open /voices.html on the device you
+  // care about, listen to the options, and paste the exact name you liked
+  // here (e.g. "Google US English", "Microsoft Aria Online (Natural)").
+  preferredVoiceName: null,
 };
