@@ -1,5 +1,6 @@
 import { CONFIG } from "./config.js";
 import { fetchWords, getFlaggedWords, getRecentSessions } from "./db.js";
+import { renderStudy } from "./study.js";
 import { renderPractice } from "./practice.js";
 import { renderQuiz } from "./quiz.js";
 import { renderParentView } from "./parent.js";
@@ -80,6 +81,7 @@ async function renderHome() {
     <p class="muted">Two Bee Grade 4 word list</p>
     ${childPicker()}
     <div class="card stack">
+      <button class="btn-secondary" id="go-study">Study (learn all ${state.words.length} words)</button>
       <button class="btn-primary" id="go-practice">Practice (${CONFIG.practiceSetSize} words, untimed)</button>
       <button class="btn-primary" id="go-quiz">Quiz (${CONFIG.quizSetSize} words, timed)</button>
       <button class="btn-secondary" id="go-review">
@@ -95,6 +97,13 @@ async function renderHome() {
       renderHome();
     };
   });
+
+  document.getElementById("go-study").onclick = () =>
+    renderStudy(root, {
+      child: activeChild(),
+      allWords: state.words,
+      onExit: renderHome,
+    });
 
   document.getElementById("go-practice").onclick = () =>
     renderPractice(root, {
