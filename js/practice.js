@@ -75,8 +75,9 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
           <input
             type="text"
             id="answer"
+            name="ans-${index}-${Date.now()}"
             placeholder="Type the spelling…"
-            autocomplete="off"
+            autocomplete="new-password"
             autocapitalize="off"
             autocorrect="off"
             spellcheck="false"
@@ -100,7 +101,9 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
       handleSubmit();
     };
 
-    document.getElementById("answer").focus();
+    const answerInput = document.getElementById("answer");
+    answerInput.value = ""; // guard against stray browser autofill on a reused field id
+    answerInput.focus();
     playWord();
   }
 

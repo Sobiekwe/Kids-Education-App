@@ -111,8 +111,9 @@ export async function renderQuiz(root, { child, allWords, onExit }) {
           <input
             type="text"
             id="answer"
+            name="ans-${index}-${Date.now()}"
             placeholder="Type the spelling…"
-            autocomplete="off"
+            autocomplete="new-password"
             autocapitalize="off"
             autocorrect="off"
             spellcheck="false"
@@ -135,7 +136,9 @@ export async function renderQuiz(root, { child, allWords, onExit }) {
       e.preventDefault();
       handleSubmit();
     };
-    document.getElementById("answer").focus();
+    const answerInput = document.getElementById("answer");
+    answerInput.value = ""; // guard against stray browser autofill on a reused field id
+    answerInput.focus();
 
     playWordThenStartTimer();
   }
