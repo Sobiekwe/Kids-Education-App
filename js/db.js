@@ -3,15 +3,49 @@ import { CONFIG } from "./config.js";
 
 // ---- Words -----------------------------------------------------------
 
-export async function fetchWords() {
+export async function fetchWords(gradeLevel) {
   const { data, error } = await supabase
     .from("words")
     .select("*")
-    .eq("list_version", CONFIG.listVersion)
+    .eq("grade_level", gradeLevel)
     .eq("active", true)
     .order("id", { ascending: true });
   if (error) throw error;
   return data;
+}
+
+// ---- Children (parent-managed accounts) --------------------------------
+
+export async function fetchChildren({ includeInactive = false } = {}) {
+  let query = supabase.from("children").select("*").order("name", { ascending: true });
+  if (!includeInactive) query = query.eq("active", true);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data;
+}
+
+export async function createChild(name, gradeLevel) {
+  const id = "child_" + crypto.randomUUID();
+  const { data, error } = await supabase
+    .from("children")
+    .insert({ id, name, grade_level: gradeLevel, active: true })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateChild(id, { name, gradeLevel }) {
+  const patch = {};
+  if (name !== undefined) patch.name = name;
+  if (gradeLevel !== undefined) patch.grade_level = gradeLevel;
+  const { error } = await supabase.from("children").update(patch).eq("id", id);
+  if (error) throw error;
+}
+
+export async function setChildActive(id, active) {
+  const { error } = await supabase.from("children").update({ active }).eq("id", id);
+  if (error) throw error;
 }
 
 // ---- Sessions ----------------------------------------------------------

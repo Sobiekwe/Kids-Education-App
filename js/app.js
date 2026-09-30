@@ -1,5 +1,5 @@
 import { CONFIG } from "./config.js";
-import { fetchWords, getFlaggedWords, getRecentSessions } from "./db.js";
+import { fetchWords, fetchChildren, getFlaggedWords, getRecentSessions } from "./db.js";
 import { renderStudy } from "./study.js";
 import { renderPractice } from "./practice.js";
 import { renderQuiz } from "./quiz.js";
@@ -8,19 +8,33 @@ import { renderParentView } from "./parent.js";
 const root = document.getElementById("app");
 
 const state = {
-  activeChildId: CONFIG.children[0].id,
-  words: null,
+  children: null,
+  childrenError: null,
+  activeChildId: null,
+  wordsByGrade: {}, // cache: gradeLevel -> words[]
   wordsError: null,
 };
 
 function activeChild() {
-  return CONFIG.children.find((c) => c.id === state.activeChildId);
+  return state.children?.find((c) => c.id === state.activeChildId) || null;
 }
 
-async function ensureWords() {
-  if (state.words || state.wordsError) return;
+async function ensureChildren() {
+  if (state.children || state.childrenError) return;
   try {
-    state.words = await fetchWords();
+    state.children = await fetchChildren();
+    if (state.children.length && !state.activeChildId) {
+      state.activeChildId = state.children[0].id;
+    }
+  } catch (err) {
+    state.childrenError = err;
+  }
+}
+
+async function ensureWordsForGrade(gradeLevel) {
+  if (state.wordsByGrade[gradeLevel] || state.wordsError) return;
+  try {
+    state.wordsByGrade[gradeLevel] = await fetchWords(gradeLevel);
   } catch (err) {
     state.wordsError = err;
   }
@@ -38,10 +52,10 @@ function childBanner() {
 function childPicker() {
   return `
     <div class="child-picker">
-      ${CONFIG.children
+      ${state.children
         .map(
           (c) => `
-        <button data-child="${c.id}" class="${c.id === state.activeChildId ? "active" : ""}">${c.name}</button>
+        <button data-child="${c.id}" class="${c.id === state.activeChildId ? "active" : ""}">${c.name} <span class="muted">(Gr ${c.grade_level})</span></button>
       `
         )
         .join("")}
@@ -50,8 +64,41 @@ function childPicker() {
 }
 
 async function renderHome() {
-  root.innerHTML = `<p class="muted">Loading words…</p>`;
-  await ensureWords();
+  root.innerHTML = `<p class="muted">Loading…</p>`;
+  await ensureChildren();
+
+  if (state.childrenError) {
+    root.innerHTML = `
+      <h1>Spelling Practice</h1>
+      <div class="card">
+        <p><strong>Couldn't load children.</strong></p>
+        <p class="muted">${state.childrenError.message}</p>
+        <button class="btn-primary" id="retry">Try again</button>
+      </div>
+    `;
+    document.getElementById("retry").onclick = () => {
+      state.childrenError = null;
+      renderHome();
+    };
+    return;
+  }
+
+  if (!state.children.length) {
+    root.innerHTML = `
+      <h1>Spelling Practice</h1>
+      <div class="card">
+        <p><strong>No children set up yet.</strong></p>
+        <p class="muted">Go to Parent view to add a child and assign a grade (1–6).</p>
+        <button class="btn-primary" id="go-parent">Parent view</button>
+      </div>
+    `;
+    document.getElementById("go-parent").onclick = () =>
+      renderParentView(root, { onExit: renderHome });
+    return;
+  }
+
+  const child = activeChild();
+  await ensureWordsForGrade(child.grade_level);
 
   if (state.wordsError) {
     root.innerHTML = `
@@ -69,6 +116,8 @@ async function renderHome() {
     return;
   }
 
+  const words = state.wordsByGrade[child.grade_level] || [];
+
   let flagged = [];
   try {
     flagged = await getFlaggedWords(state.activeChildId);
@@ -78,16 +127,21 @@ async function renderHome() {
 
   root.innerHTML = `
     <h1>Spelling Practice</h1>
-    <p class="muted">Two Bee Grade 4 word list</p>
+    <p class="muted">Grade ${child.grade_level} word list${words.length ? ` (${words.length} words)` : ""}</p>
     ${childPicker()}
+    ${
+      !words.length
+        ? `<div class="card"><p><strong>No words yet for Grade ${child.grade_level}.</strong></p><p class="muted">Add words for this grade in the database, then come back.</p></div>`
+        : `
     <div class="card stack">
-      <button class="btn-secondary" id="go-study">Study (learn all ${state.words.length} words)</button>
-      <button class="btn-primary" id="go-practice">Practice (${CONFIG.practiceSetSize} words, untimed)</button>
-      <button class="btn-primary" id="go-quiz">Quiz (${CONFIG.quizSetSize} words, timed)</button>
+      <button class="btn-secondary" id="go-study">Study (learn all ${words.length} words)</button>
+      <button class="btn-primary" id="go-practice">Practice (${Math.min(CONFIG.practiceSetSize, words.length)} words, untimed)</button>
+      <button class="btn-primary" id="go-quiz">Quiz (${Math.min(CONFIG.quizSetSize, words.length)} words, timed)</button>
       <button class="btn-secondary" id="go-review">
         Review missed words ${flagged.length ? `<span class="flag-pill">${flagged.length}</span>` : ""}
       </button>
-    </div>
+    </div>`
+    }
     <button class="btn-link" id="go-parent">Parent view</button>
   `;
 
@@ -98,47 +152,49 @@ async function renderHome() {
     };
   });
 
-  document.getElementById("go-study").onclick = () =>
-    renderStudy(root, {
-      child: activeChild(),
-      allWords: state.words,
-      onExit: renderHome,
-    });
+  if (words.length) {
+    document.getElementById("go-study").onclick = () =>
+      renderStudy(root, {
+        child,
+        allWords: words,
+        onExit: renderHome,
+      });
 
-  document.getElementById("go-practice").onclick = () =>
-    renderPractice(root, {
-      child: activeChild(),
-      allWords: state.words,
-      mode: "practice",
-      onExit: renderHome,
-    });
-
-  document.getElementById("go-quiz").onclick = () =>
-    renderQuiz(root, {
-      child: activeChild(),
-      allWords: state.words,
-      onExit: renderHome,
-    });
-
-  document.getElementById("go-review").onclick = async () => {
-    if (!flagged.length) {
-      // F11: if none flagged, offer ordinary Practice instead.
+    document.getElementById("go-practice").onclick = () =>
       renderPractice(root, {
-        child: activeChild(),
-        allWords: state.words,
+        child,
+        allWords: words,
         mode: "practice",
         onExit: renderHome,
-        noticeIfEmpty: "No words are flagged for review right now — here's a regular practice set instead.",
       });
-      return;
-    }
-    renderPractice(root, {
-      child: activeChild(),
-      allWords: flagged,
-      mode: "review",
-      onExit: renderHome,
-    });
-  };
+
+    document.getElementById("go-quiz").onclick = () =>
+      renderQuiz(root, {
+        child,
+        allWords: words,
+        onExit: renderHome,
+      });
+
+    document.getElementById("go-review").onclick = async () => {
+      if (!flagged.length) {
+        // F11: if none flagged, offer ordinary Practice instead.
+        renderPractice(root, {
+          child,
+          allWords: words,
+          mode: "practice",
+          onExit: renderHome,
+          noticeIfEmpty: "No words are flagged for review right now — here's a regular practice set instead.",
+        });
+        return;
+      }
+      renderPractice(root, {
+        child,
+        allWords: flagged,
+        mode: "review",
+        onExit: renderHome,
+      });
+    };
+  }
 
   document.getElementById("go-parent").onclick = () =>
     renderParentView(root, { onExit: renderHome });

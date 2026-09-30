@@ -7,13 +7,14 @@ export const CONFIG = {
   supabaseUrl: "https://pbcenkjcxjikoupamdfb.supabase.co",
   supabasePublishableKey: "sb_publishable_xc5y9KdcA_bq4T70liSu2g_kt_TSid7",
 
-  // Two preconfigured children (F01). Change the "name" fields to your kids'
-  // actual names — "id" must stay unique and unchanged once you've started
-  // saving scores, since it's the key used in the shared database.
-  children: [
-    { id: "child1", name: "Netochukwu" },
-    { id: "child2", name: "Chioma" },
-  ],
+  // Children now live in the `children` table (parent view can create/edit/
+  // deactivate them) instead of being hardcoded here — see js/parent.js.
+
+  // Parent view is gated by this shared PIN so kids can't create accounts or
+  // change grades themselves. Change it to whatever you like and redeploy.
+  // This is a simple deterrent, not real security — there is no login system
+  // in this app (see schema.sql's note on Row Level Security).
+  parentPin: "1234",
 
   // Set sizes and timing (F02)
   practiceSetSize: 10,
@@ -24,10 +25,6 @@ export const CONFIG = {
   // Review flag/clear rule (F10)
   flagAfterConsecutiveMisses: 2,
   clearAfterConsecutiveCorrectSessions: 2,
-
-  // Word list version tag (must match a list_version value in the `words`
-  // table — see data/schema.sql and data/words.js)
-  listVersion: "two-bee-grade4-2026-2027",
 
   // Voice (F09). Leave null to auto-pick the clearest available US-English
   // voice. To force a specific one, open /voices.html on the device you

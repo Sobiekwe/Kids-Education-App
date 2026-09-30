@@ -118,15 +118,30 @@ button {
 }
 .progress-dots .dot.done { background: var(--primary); }
 
-input[type="text"] {
+input[type="text"],
+input[type="password"],
+select {
   width: 100%;
-  font-size: 1.2rem;
-  padding: 14px;
+  font-size: 1.05rem;
+  padding: 12px;
   border-radius: 12px;
   border: 2px solid var(--border);
   font-family: inherit;
+  background: #fff;
+  color: var(--ink);
 }
-input[type="text"]:focus { outline: none; border-color: var(--primary); }
+input[type="text"]:focus,
+input[type="password"]:focus,
+select:focus { outline: none; border-color: var(--primary); }
+
+.child-row {
+  flex-wrap: wrap;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.child-row .child-name { flex: 1 1 140px; }
+.child-row .child-grade { flex: 0 1 110px; }
+.child-row button { flex: 0 1 auto; width: auto; padding: 10px 12px; font-size: 0.9rem; }
 
 .feedback {
   padding: 16px;
