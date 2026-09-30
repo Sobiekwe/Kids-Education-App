@@ -14,6 +14,49 @@ export async function fetchWords(gradeLevel) {
   return data;
 }
 
+/** All words for a grade, active and inactive, for Parent view management. */
+export async function fetchWordsForManagement(gradeLevel) {
+  const { data, error } = await supabase
+    .from("words")
+    .select("*")
+    .eq("grade_level", gradeLevel)
+    .order("word", { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+/**
+ * Adds one or more words to a grade. Relies on the (word, grade_level)
+ * unique constraint (added in migration_002_grades.sql) with
+ * ignoreDuplicates so a word already in that grade is silently skipped
+ * rather than erroring or overwriting existing content/progress history.
+ * Returns how many rows were actually inserted.
+ */
+export async function addWords(gradeLevel, words) {
+  const listVersion = `custom-grade${gradeLevel}-${new Date().toISOString().slice(0, 10)}`;
+  const rows = words.map((w) => ({
+    word: w.word.trim(),
+    meaning: w.meaning?.trim() || null,
+    sentence: w.sentence?.trim() || null,
+    part_of_speech: w.pos?.trim() || null,
+    accepted_variants: w.acceptedVariants?.length ? w.acceptedVariants : [],
+    grade_level: gradeLevel,
+    list_version: listVersion,
+    active: true,
+  }));
+  const { data, error } = await supabase
+    .from("words")
+    .upsert(rows, { onConflict: "word,grade_level", ignoreDuplicates: true })
+    .select();
+  if (error) throw error;
+  return { added: data.length, skipped: rows.length - data.length };
+}
+
+export async function setWordActive(id, active) {
+  const { error } = await supabase.from("words").update({ active }).eq("id", id);
+  if (error) throw error;
+}
+
 // ---- Children (parent-managed accounts) --------------------------------
 
 export async function fetchChildren({ includeInactive = false } = {}) {

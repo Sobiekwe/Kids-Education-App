@@ -28,6 +28,16 @@ history. The PIN is a soft deterrent only (checked in the browser, not a real
 login) — good enough to keep kids from adding accounts themselves, not meant
 to protect sensitive data.
 
+## Managing word lists
+
+Also in Parent view, per grade: add one word at a time, or upload a CSV with
+columns `word, meaning, sentence, part_of_speech (optional), accepted_variants
+(optional, separate multiple with ;)`. Use "Download CSV template" to get a
+correctly-formatted starting file. Uploads only ever add new words — a word
+already in that grade (same spelling) is skipped, never overwritten, so
+re-uploading a file is safe. "Remove" on a word soft-deletes it (hides it from
+the app but keeps any attempt history intact); "Restore" brings it back.
+
 ## How it's organized
 
 - `index.html` / `css/style.css` — the single page and its styling.

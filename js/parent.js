@@ -6,9 +6,14 @@ import {
   createChild,
   updateChild,
   setChildActive,
+  fetchWordsForManagement,
+  addWords,
+  setWordActive,
 } from "./db.js";
+import { parseCsv, csvRowsToWords } from "./util.js";
 
 const PIN_SESSION_KEY = "parentUnlocked";
+let selectedWordGrade = 4;
 
 /**
  * Parent view: gated by a shared PIN (soft deterrent, not real security —
@@ -62,6 +67,13 @@ async function renderDashboard(root, { onExit }) {
     return;
   }
 
+  let words = [];
+  try {
+    words = await fetchWordsForManagement(selectedWordGrade);
+  } catch (err) {
+    console.warn("Could not load words for management:", err.message);
+  }
+
   const activeChildren = children.filter((c) => c.active);
   const sections = await Promise.all(
     activeChildren.map(async (child) => {
@@ -107,6 +119,55 @@ async function renderDashboard(root, { onExit }) {
         <button type="submit" class="btn-primary">Add</button>
       </form>
       <p id="add-child-error" class="muted" style="display:none"></p>
+    </div>
+
+    <div class="card">
+      <h2>Word lists</h2>
+      <p class="muted">Add words to a grade one at a time, or upload a CSV. Existing words are never overwritten — duplicates (same spelling, same grade) are skipped automatically.</p>
+      <div class="row" style="align-items:center; gap:8px; margin-bottom:16px">
+        <label for="word-grade-select" class="muted" style="flex:0 0 auto">Grade:</label>
+        <select id="word-grade-select">
+          ${[1, 2, 3, 4, 5, 6].map((g) => `<option value="${g}" ${g === selectedWordGrade ? "selected" : ""}>Grade ${g}</option>`).join("")}
+        </select>
+        <button class="btn-link" id="download-template" style="flex:0 0 auto">Download CSV template</button>
+      </div>
+
+      <h3>Upload CSV</h3>
+      <p class="muted">Columns: word, meaning, sentence, part_of_speech (optional), accepted_variants (optional, separate with ;)</p>
+      <input type="file" id="csv-file" accept=".csv,text/csv" />
+      <p id="csv-status" class="muted" style="display:none; margin-top:8px"></p>
+
+      <h3 style="margin-top:20px">Add one word</h3>
+      <form id="add-word-form" class="stack">
+        <input type="text" id="new-word-word" placeholder="Word" required />
+        <input type="text" id="new-word-meaning" placeholder="Meaning" required />
+        <input type="text" id="new-word-sentence" placeholder="Example sentence" required />
+        <input type="text" id="new-word-pos" placeholder="Part of speech (optional)" />
+        <input type="text" id="new-word-variants" placeholder="Accepted variants, separated by ; (optional)" />
+        <button type="submit" class="btn-primary">Add word to Grade ${selectedWordGrade}</button>
+      </form>
+      <p id="add-word-status" class="muted" style="display:none; margin-top:8px"></p>
+
+      <h3 style="margin-top:20px">Grade ${selectedWordGrade} words (${words.filter((w) => w.active).length} active)</h3>
+      <div class="stack" id="word-rows" style="max-height:320px; overflow-y:auto">
+        ${
+          words.length
+            ? words
+                .map(
+                  (w) => `
+          <div class="row word-row" style="align-items:center; gap:8px; ${w.active ? "" : "opacity:0.5"}">
+            <div style="flex:1">
+              <strong>${w.word}</strong>
+              <span class="muted">— ${w.meaning || ""}</span>
+            </div>
+            <button class="btn-secondary word-toggle" data-id="${w.id}" data-active="${w.active}" style="flex:0 0 auto; width:auto; padding:8px 12px; font-size:0.85rem">${w.active ? "Remove" : "Restore"}</button>
+          </div>
+        `
+                )
+                .join("")
+            : `<p class="muted">No words yet for Grade ${selectedWordGrade}.</p>`
+        }
+      </div>
     </div>
 
     ${sections
@@ -195,6 +256,89 @@ async function renderDashboard(root, { onExit }) {
       btn.disabled = true;
       try {
         await setChildActive(id, !isActive);
+        renderDashboard(root, { onExit });
+      } catch (err) {
+        alert("Couldn't update: " + err.message);
+        btn.disabled = false;
+      }
+    };
+  });
+
+  // ---- Word list management ---------------------------------------
+
+  document.getElementById("word-grade-select").onchange = (e) => {
+    selectedWordGrade = parseInt(e.target.value, 10);
+    renderDashboard(root, { onExit });
+  };
+
+  document.getElementById("download-template").onclick = (e) => {
+    e.preventDefault();
+    const csv =
+      "word,meaning,sentence,part_of_speech,accepted_variants\n" +
+      'example,"a thing that shows what something is like.","This vase is an example of her pottery.",noun,\n';
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `grade${selectedWordGrade}-word-template.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  document.getElementById("csv-file").onchange = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const statusEl = document.getElementById("csv-status");
+    statusEl.style.display = "";
+    statusEl.textContent = "Reading file…";
+    try {
+      const text = await file.text();
+      const rows = parseCsv(text);
+      const parsedWords = csvRowsToWords(rows);
+      if (!parsedWords.length) {
+        statusEl.textContent = "No valid rows found in that file — check it has a 'word' column.";
+        return;
+      }
+      const result = await addWords(selectedWordGrade, parsedWords);
+      statusEl.textContent = `Added ${result.added} new word(s) to Grade ${selectedWordGrade}. Skipped ${result.skipped} already-existing word(s).`;
+      setTimeout(() => renderDashboard(root, { onExit }), 1200);
+    } catch (err) {
+      statusEl.textContent = "Couldn't import that file: " + err.message;
+    }
+  };
+
+  document.getElementById("add-word-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const statusEl = document.getElementById("add-word-status");
+    const word = document.getElementById("new-word-word").value.trim();
+    const meaning = document.getElementById("new-word-meaning").value.trim();
+    const sentence = document.getElementById("new-word-sentence").value.trim();
+    const pos = document.getElementById("new-word-pos").value.trim();
+    const variantsRaw = document.getElementById("new-word-variants").value.trim();
+    if (!word || !meaning || !sentence) return;
+    const acceptedVariants = variantsRaw
+      ? variantsRaw.split(";").map((s) => s.trim()).filter(Boolean)
+      : [];
+    statusEl.style.display = "";
+    statusEl.textContent = "Saving…";
+    try {
+      const result = await addWords(selectedWordGrade, [{ word, meaning, sentence, pos, acceptedVariants }]);
+      statusEl.textContent = result.added
+        ? `Added "${word}" to Grade ${selectedWordGrade}.`
+        : `"${word}" is already in Grade ${selectedWordGrade} — not added again.`;
+      setTimeout(() => renderDashboard(root, { onExit }), 900);
+    } catch (err) {
+      statusEl.textContent = "Couldn't add word: " + err.message;
+    }
+  };
+
+  root.querySelectorAll(".word-toggle").forEach((btn) => {
+    btn.onclick = async () => {
+      const id = parseInt(btn.dataset.id, 10);
+      const isActive = btn.dataset.active === "true";
+      btn.disabled = true;
+      try {
+        await setWordActive(id, !isActive);
         renderDashboard(root, { onExit });
       } catch (err) {
         alert("Couldn't update: " + err.message);
