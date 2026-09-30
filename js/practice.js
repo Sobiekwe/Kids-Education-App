@@ -49,7 +49,9 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
     const w = currentWord();
     if (!w.sentence) return;
     try {
-      await speak(w.sentence.replace(new RegExp(w.word, "gi"), "blank"));
+      // Spoken aloud with the real word in it, same as a real bee's
+      // "use it in a sentence" — masking only matters for visible text.
+      await speak(w.sentence);
     } catch {
       // Non-fatal for a bonus feature; ignore.
     }

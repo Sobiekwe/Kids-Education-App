@@ -128,7 +128,9 @@ export async function renderQuiz(root, { child, allWords, onExit }) {
     document.getElementById("repeat").onclick = () => playRepeatOrSentence(currentWord().word);
     document.getElementById("sentence").onclick = () => {
       const w = currentWord();
-      if (w.sentence) playRepeatOrSentence(w.sentence.replace(new RegExp(w.word, "gi"), "blank"));
+      // Spoken aloud with the real word in it, same as a real bee's
+      // "use it in a sentence" — masking only matters for visible text.
+      if (w.sentence) playRepeatOrSentence(w.sentence);
     };
 
     const form = document.getElementById("answer-form");
