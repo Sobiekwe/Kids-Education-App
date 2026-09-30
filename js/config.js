@@ -11,8 +11,8 @@ export const CONFIG = {
   // actual names — "id" must stay unique and unchanged once you've started
   // saving scores, since it's the key used in the shared database.
   children: [
-    { id: "child1", name: "Child 1" },
-    { id: "child2", name: "Child 2" },
+    { id: "child1", name: "Netochukwu" },
+    { id: "child2", name: "Chioma" },
   ],
 
   // Set sizes and timing (F02)
