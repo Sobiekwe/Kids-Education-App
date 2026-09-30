@@ -17,7 +17,7 @@ export const CONFIG = {
   parentPin: "1234",
 
   // Set sizes and timing (F02)
-  practiceSetSize: 10,
+  practiceSetSize: 5,
   quizSetSize: 20,
   quizSecondsPerWord: 20,
   reviewSetSize: 10,
