@@ -31,6 +31,17 @@ function pickVoice() {
     }
   }
 
+  // Strongest signal of quality: a downloaded OS-level neural voice.
+  // Windows 11 names these like "Microsoft Ava Online (Natural)"; macOS/iOS
+  // "Enhanced"/"Premium" voices are the equivalent. Always prefer these over
+  // the generic default voices if the device has one installed.
+  const enVoices = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith("en"));
+  const neural = enVoices.find((v) => /natural|enhanced|premium/i.test(v.name));
+  if (neural) {
+    voice = neural;
+    return;
+  }
+
   for (const name of PREFERRED_NAME_CONTAINS) {
     const match = voices.find((v) => v.name.toLowerCase().includes(name));
     if (match) {
