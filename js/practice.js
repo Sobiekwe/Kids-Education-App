@@ -56,6 +56,7 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
   let firstAttemptCorrectCount = 0;
   let attemptedFirstCount = 0;
   let currentAttemptCount = 0; // attempts on the CURRENT word
+  let submitting = false; // guards against a double-click/double-Enter recording two attempts
 
   if (resume) {
     try {
@@ -103,6 +104,7 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
 
   function renderQuestion() {
     currentAttemptCount = 0;
+    submitting = false;
     const noticeHtml = noticeIfEmpty && index === 0 ? `<p class="muted">${noticeIfEmpty}</p>` : "";
     root.innerHTML = `
       <h2>${mode === "review" ? "Review missed words" : "Practice"} — ${child.name}</h2>
@@ -154,12 +156,20 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
   }
 
   async function handleSubmit() {
+    if (submitting) return;
+    submitting = true; // lock immediately, before reading input, so a second
+    // near-simultaneous submit (double-click, double Enter) can't both pass
+    // the empty-check below and record two attempts for the same word.
     const input = document.getElementById("answer");
     const submitBtn = document.getElementById("submit-btn");
     const value = input.value;
-    if (!value.trim()) return; // F07: an empty submit does not advance
+    if (!value.trim()) {
+      submitting = false; // nothing submitted — let them keep typing
+      return;
+    }
 
     submitBtn.disabled = true; // prevent double submit (F08)
+    input.disabled = true;
     currentAttemptCount += 1;
     const isFirstAttempt = currentAttemptCount === 1;
     const w = currentWord();
@@ -204,6 +214,7 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
 
     if (!correct) {
       document.getElementById("try-again").onclick = () => {
+        submitting = false;
         input.disabled = false;
         input.value = "";
         submitBtn.style.display = "";

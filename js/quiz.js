@@ -212,12 +212,18 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
 
   async function handleSubmit() {
     if (advancing) return;
+    advancing = true; // lock immediately, before reading input, so a second
+    // near-simultaneous submit (double-click, double Enter) can't both pass
+    // the empty-check below and record two attempts for the same word.
     const input = document.getElementById("answer");
     const value = input.value;
-    if (!value.trim()) return; // F07: empty submit does not advance
-    advancing = true;
+    if (!value.trim()) {
+      advancing = false; // nothing submitted — let them keep typing
+      return;
+    }
     clearTimer();
     document.getElementById("submit-btn").disabled = true; // prevent double submit
+    input.disabled = true; // belt-and-suspenders: also block the input itself
 
     const w = currentWord();
     const correct = isCorrectSpelling(value, w.word, w.accepted_variants);
