@@ -82,11 +82,24 @@ async function synthesizeAudio(text) {
 }
 
 async function uploadWordAudio(path, blob) {
-  const { error } = await supabase.storage.from("word-audio").upload(path, blob, {
+  // Plain insert first (no upsert option) — Supabase Storage's upsert path
+  // triggers a Postgres RLS check against the UPDATE policy even for files
+  // that don't exist yet, which fails even with correct bucket/policy setup.
+  // A plain insert only needs the INSERT policy, which we have.
+  const { error: insertError } = await supabase.storage.from("word-audio").upload(path, blob, {
     contentType: "audio/mpeg",
-    upsert: true,
   });
-  if (error) throw error;
+  if (!insertError) {
+    const { data } = supabase.storage.from("word-audio").getPublicUrl(path);
+    return data.publicUrl;
+  }
+  // File already exists (regenerating audio for a word) — use the explicit
+  // update() method instead, which matches an existing row and only needs
+  // the UPDATE policy.
+  const { error: updateError } = await supabase.storage.from("word-audio").update(path, blob, {
+    contentType: "audio/mpeg",
+  });
+  if (updateError) throw updateError;
   const { data } = supabase.storage.from("word-audio").getPublicUrl(path);
   return data.publicUrl;
 }
