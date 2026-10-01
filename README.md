@@ -74,12 +74,14 @@ so nothing ever goes silent.
 **One-time setup, before this works (staging Supabase project + staging Vercel project):**
 
 1. **Google Cloud**: create a project (or use an existing one), enable the
-   "Cloud Text-to-Speech API", and create an API key. No need to restrict it
-   by HTTP referrer — it's only ever called from a server, never a browser.
+   "Cloud Text-to-Speech API", and create a **service account** with a JSON
+   key (Credentials → the service account → Keys → Add key → JSON). That
+   downloads a `.json` file — its contents are the credential.
 2. **Vercel**: in this project's Settings → Environment Variables, add
-   `GOOGLE_TTS_API_KEY` (scope it to "Preview" for now, since staging deploys
-   as a Preview environment) with that key as the value. It's read server-side
-   only, by `api/tts.js` — never sent to the browser or committed to the repo.
+   `GOOGLE_SERVICE_ACCOUNT_JSON` (scope it to "Preview" for now, since staging
+   deploys as a Preview environment) with the **entire contents** of that
+   JSON file as the value. It's read server-side only, by `api/tts.js` —
+   never sent to the browser or committed to the repo.
 3. **Supabase (staging project)**: Storage → New bucket → name it exactly
    `word-audio` → make it a **public** bucket (read-only to the world, like
    any other static asset — there's nothing private in a spelling word).
@@ -113,8 +115,9 @@ the app but keeps any attempt history intact); "Restore" brings it back.
 - `js/tts.js` — audio playback: pre-generated Google Cloud TTS files first,
   browser text-to-speech (Web Speech API) as the fallback.
 - `api/tts.js` — Vercel serverless function; the only place the Google Cloud
-  TTS API key is used (server-side only, via the `GOOGLE_TTS_API_KEY`
-  environment variable — never shipped to the browser).
+  service account credential is used (server-side only, via the
+  `GOOGLE_SERVICE_ACCOUNT_JSON` environment variable — never shipped to the
+  browser).
 - `js/grading.js` — binary spelling grading/normalization (F07).
 - `js/config.js` — the one file you edit to change the parent PIN, set sizes,
   timer length, and review-flag thresholds (F02 — no settings screen).
