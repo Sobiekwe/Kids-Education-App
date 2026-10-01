@@ -45,6 +45,23 @@ history. The PIN is a soft deterrent only (checked in the browser, not a real
 login) — good enough to keep kids from adding accounts themselves, not meant
 to protect sensitive data.
 
+## Continuous learning (staging only)
+
+Two features, both gated on `data/migration_003_continuity.sql` having been
+run (staging database only — not yet promoted to production):
+
+- **Resume interrupted sessions**: if a Practice or Quiz is closed partway
+  through, the home screen offers "Continue where you left off" with the
+  exact same words in the exact same order, picking up at the right word.
+  Starting a new set of that mode instead abandons the old one.
+- **Systematic word coverage**: Practice/Quiz no longer pick words at random.
+  Each child's `word_progress` row now tracks `last_shown_at` (separate from
+  the mastery-tracking columns), and word selection always prefers words
+  never shown, then words shown longest ago — so the full grade list gets
+  even coverage over repeated sessions instead of the same words resurfacing
+  while others go untouched. Review mode is unchanged — it already pulls a
+  curated set of flagged/struggling words.
+
 ## Managing word lists
 
 Also in Parent view, per grade: add one word at a time, or upload a CSV with

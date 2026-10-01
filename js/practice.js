@@ -1,31 +1,75 @@
 import { CONFIG } from "./config.js";
-import { startSession, recordAttempt } from "./db.js";
+import {
+  startSession,
+  recordAttempt,
+  updateSessionIndex,
+  fetchLastShownMap,
+  touchWordsShown,
+  getSessionAttempts,
+} from "./db.js";
 import { speak, stopSpeaking } from "./tts.js";
 import { isCorrectSpelling } from "./grading.js";
-import { sampleUnique } from "./util.js";
+import { sampleUnique, pickCoverageSet } from "./util.js";
 
 /**
  * Practice mode (F04) and Review-missed-words mode (F11) share this screen:
  * untimed, speaks the word, typed spelling, unlimited retries, immediate
  * feedback with meaning + sentence, Next button.
+ *
+ * `resume`, when passed, continues an interrupted session instead of
+ * starting a new one: { session, words } — words already in the session's
+ * stored order, session.current_index says where to pick back up.
  */
-export async function renderPractice(root, { child, allWords, mode, onExit, noticeIfEmpty }) {
-  const size = mode === "review" ? Math.min(CONFIG.reviewSetSize, allWords.length) : Math.min(CONFIG.practiceSetSize, allWords.length);
-  const words = sampleUnique(allWords, size);
+export async function renderPractice(root, { child, allWords, mode, onExit, noticeIfEmpty, resume }) {
+  let session, words;
 
-  let session;
-  try {
-    session = await startSession(child.id, mode, words.length);
-  } catch (err) {
-    root.innerHTML = `<div class="card"><p><strong>Couldn't start this set.</strong></p><p class="muted">${err.message}</p><button class="btn-primary" id="back">Back</button></div>`;
-    document.getElementById("back").onclick = onExit;
-    return;
+  if (resume) {
+    session = resume.session;
+    words = resume.words;
+  } else {
+    const size = mode === "review" ? Math.min(CONFIG.reviewSetSize, allWords.length) : Math.min(CONFIG.practiceSetSize, allWords.length);
+    if (mode === "review") {
+      // Flagged words are already a curated, usually-small set — no need for
+      // coverage logic on top of that.
+      words = sampleUnique(allWords, size);
+    } else {
+      let lastShownMap = {};
+      try {
+        lastShownMap = await fetchLastShownMap(child.id);
+      } catch (err) {
+        console.warn("Could not load word-coverage data, falling back to random:", err.message);
+      }
+      words = pickCoverageSet(allWords, lastShownMap, size);
+    }
+
+    try {
+      session = await startSession(child.id, mode, words.length, words.map((w) => w.id));
+    } catch (err) {
+      root.innerHTML = `<div class="card"><p><strong>Couldn't start this set.</strong></p><p class="muted">${err.message}</p><button class="btn-primary" id="back">Back</button></div>`;
+      document.getElementById("back").onclick = onExit;
+      return;
+    }
+    if (mode !== "review") touchWordsShown(child.id, words.map((w) => w.id));
   }
 
-  let index = 0;
+  let index = resume ? session.current_index : 0;
   let firstAttemptCorrectCount = 0;
   let attemptedFirstCount = 0;
   let currentAttemptCount = 0; // attempts on the CURRENT word
+
+  if (resume) {
+    try {
+      const pastAttempts = await getSessionAttempts(session.id);
+      pastAttempts.forEach((a) => {
+        if (a.is_first_attempt) {
+          attemptedFirstCount += 1;
+          if (a.is_correct) firstAttemptCorrectCount += 1;
+        }
+      });
+    } catch (err) {
+      console.warn("Could not reload past attempts for resumed session:", err.message);
+    }
+  }
 
   function currentWord() {
     return words[index];
@@ -173,6 +217,7 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
 
   function nextWord() {
     index += 1;
+    updateSessionIndex(session.id, index); // fire-and-forget; non-fatal if it fails
     if (index >= words.length) {
       finishSet();
     } else {

@@ -11,6 +11,25 @@ export function sampleUnique(list, count) {
 }
 
 /**
+ * Picks `count` words prioritizing coverage over randomness (continuous-
+ * learning feature, staging): words never shown to this child come first
+ * (in random order among themselves), then words shown longest ago, before
+ * anything gets repeated sooner than necessary. `lastShownMap` is
+ * word_id -> ISO timestamp string, as returned by db.js's
+ * fetchLastShownMap() — a word absent from it has never been shown.
+ */
+export function pickCoverageSet(words, lastShownMap, count) {
+  const unseen = sampleUnique(
+    words.filter((w) => !lastShownMap[w.id]),
+    words.length
+  );
+  const seen = words
+    .filter((w) => lastShownMap[w.id])
+    .sort((a, b) => new Date(lastShownMap[a.id]) - new Date(lastShownMap[b.id]));
+  return [...unseen, ...seen].slice(0, Math.min(count, words.length));
+}
+
+/**
  * Minimal RFC4180-ish CSV parser: handles quoted fields, commas and
  * newlines inside quotes, and "" as an escaped quote. Good enough for a
  * parent pasting/exporting a small word-list CSV from Excel/Sheets —

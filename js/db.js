@@ -93,14 +93,25 @@ export async function setChildActive(id, active) {
 
 // ---- Sessions ----------------------------------------------------------
 
-export async function startSession(childId, mode, size) {
+/**
+ * wordIds is the ordered list of word ids for this set, stored so an
+ * interrupted session can be resumed with the exact same words in the
+ * exact same order (continuous-learning feature, staging).
+ */
+export async function startSession(childId, mode, size, wordIds = []) {
   const { data, error } = await supabase
     .from("sessions")
-    .insert({ child_id: childId, mode, size, status: "in_progress" })
+    .insert({ child_id: childId, mode, size, status: "in_progress", word_ids: wordIds, current_index: 0 })
     .select()
     .single();
   if (error) throw error;
   return data;
+}
+
+/** Persists how far into the set the child has gotten, for resuming later. */
+export async function updateSessionIndex(sessionId, currentIndex) {
+  const { error } = await supabase.from("sessions").update({ current_index: currentIndex }).eq("id", sessionId);
+  if (error) console.warn("updateSessionIndex failed (non-fatal):", error.message);
 }
 
 export async function completeSession(sessionId, score, total) {
@@ -119,6 +130,43 @@ export async function abandonSession(sessionId) {
     .eq("id", sessionId)
     .eq("status", "in_progress");
   if (error) console.warn("abandonSession failed (non-fatal):", error.message);
+}
+
+/**
+ * The most recent in-progress Practice or Quiz session for a child, if any
+ * — used to offer "Continue where you left off" on the home screen. Review
+ * sessions are deliberately excluded; they're re-curated from flagged words
+ * each time rather than resumed.
+ */
+export async function findResumableSession(childId) {
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("*")
+    .eq("child_id", childId)
+    .eq("status", "in_progress")
+    .in("mode", ["practice", "quiz"])
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn("findResumableSession failed (non-fatal):", error.message);
+    return null;
+  }
+  // A session with no words recorded predates this feature — nothing to resume.
+  if (!data || !data.word_ids?.length) return null;
+  return data;
+}
+
+/** All recorded attempts for a session, oldest first — used to reconstruct
+ * scoring/results when resuming an interrupted session. */
+export async function getSessionAttempts(sessionId) {
+  const { data, error } = await supabase
+    .from("attempts")
+    .select("*")
+    .eq("session_id", sessionId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return data;
 }
 
 export async function getRecentSessions(childId, limit = 5) {
@@ -226,6 +274,41 @@ export async function recordAttempt({ sessionId, childId, wordId, submittedAnswe
   }
 
   await saveProgress(p);
+}
+
+/**
+ * Map of word_id -> last_shown_at (ISO string) for every word this child has
+ * ever been shown, regardless of whether they got it right. A word absent
+ * from the map has never been shown. Used by pickCoverageSet() (util.js) so
+ * Practice/Quiz draw unseen words first, then least-recently-seen ones,
+ * instead of picking randomly — the continuous-learning feature (staging).
+ */
+export async function fetchLastShownMap(childId) {
+  const { data, error } = await supabase
+    .from("word_progress")
+    .select("word_id, last_shown_at")
+    .eq("child_id", childId)
+    .not("last_shown_at", "is", null);
+  if (error) throw error;
+  const map = {};
+  data.forEach((row) => {
+    map[row.word_id] = row.last_shown_at;
+  });
+  return map;
+}
+
+/**
+ * Marks a batch of words as "shown now" to this child, for coverage
+ * tracking. Only ever touches last_shown_at — never the mastery columns
+ * (miss_streak/correct_streak/flagged), which recordAttempt's state machine
+ * owns exclusively.
+ */
+export async function touchWordsShown(childId, wordIds) {
+  if (!wordIds.length) return;
+  const now = new Date().toISOString();
+  const rows = wordIds.map((wordId) => ({ child_id: childId, word_id: wordId, last_shown_at: now }));
+  const { error } = await supabase.from("word_progress").upsert(rows, { onConflict: "child_id,word_id" });
+  if (error) console.warn("touchWordsShown failed (non-fatal):", error.message);
 }
 
 export async function getFlaggedWords(childId) {
