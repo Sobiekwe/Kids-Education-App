@@ -14,14 +14,23 @@ import { parseCsv, csvRowsToWords } from "./util.js";
 
 const PIN_SESSION_KEY = "parentUnlocked";
 let selectedWordGrade = 4;
+let activeSection = "children"; // "children" | "words" | "reports" — which sidebar panel is showing
+
+const SECTIONS = [
+  { id: "children", label: "👪 Children" },
+  { id: "words", label: "📝 Word Lists" },
+  { id: "reports", label: "📊 Reports" },
+];
 
 /**
  * Parent view: gated by a shared PIN (soft deterrent, not real security —
  * there's no login system in this app). Lets the parent create/edit/
- * deactivate child accounts and assign each one a grade (1-6), plus shows
- * read-only recent scores and flagged words per active child.
+ * deactivate child accounts and assign each one a grade (1-6), manage each
+ * grade's word list, and see read-only recent scores and flagged words.
+ * Laid out as a sidebar + content panel so it isn't one long scrolling page.
  */
 export async function renderParentView(root, { onExit }) {
+  document.body.classList.add("parent-theme");
   if (sessionStorage.getItem(PIN_SESSION_KEY) === "yes") {
     return renderDashboard(root, { onExit });
   }
@@ -29,8 +38,12 @@ export async function renderParentView(root, { onExit }) {
 }
 
 function renderPinGate(root, { onExit }) {
+  document.body.classList.remove("has-sidebar");
   root.innerHTML = `
-    <h1>Parent view</h1>
+    <div class="topbar">
+      <button class="btn-back" id="back">← Home</button>
+      <div class="topbar-title"><h1>Parent view</h1></div>
+    </div>
     <div class="card">
       <p>Enter the parent PIN to continue.</p>
       <form id="pin-form">
@@ -41,7 +54,6 @@ function renderPinGate(root, { onExit }) {
       </form>
       <p id="pin-error" class="muted" style="display:none">Incorrect PIN.</p>
     </div>
-    <button class="btn-link" id="back">Back to home</button>
   `;
   document.getElementById("back").onclick = onExit;
   document.getElementById("pin-form").onsubmit = (e) => {
@@ -57,6 +69,7 @@ function renderPinGate(root, { onExit }) {
 }
 
 async function renderDashboard(root, { onExit }) {
+  document.body.classList.add("has-sidebar");
   root.innerHTML = `<p class="muted">Loading…</p>`;
 
   let children = [];
@@ -74,20 +87,66 @@ async function renderDashboard(root, { onExit }) {
     console.warn("Could not load words for management:", err.message);
   }
 
-  const activeChildren = children.filter((c) => c.active);
-  const sections = await Promise.all(
-    activeChildren.map(async (child) => {
-      const [sessions, flagged] = await Promise.all([
-        getRecentSessions(child.id, 5).catch(() => []),
-        getFlaggedWords(child.id).catch(() => []),
-      ]);
-      return { child, sessions, flagged };
-    })
-  );
+  let reportSections = [];
+  if (activeSection === "reports") {
+    const activeChildren = children.filter((c) => c.active);
+    reportSections = await Promise.all(
+      activeChildren.map(async (child) => {
+        const [sessions, flagged] = await Promise.all([
+          getRecentSessions(child.id, 5).catch(() => []),
+          getFlaggedWords(child.id).catch(() => []),
+        ]);
+        return { child, sessions, flagged };
+      })
+    );
+  }
 
   root.innerHTML = `
-    <h1>Parent view</h1>
+    <div class="topbar">
+      <button class="btn-back" id="back">← Home</button>
+      <div class="topbar-title"><h1>Parent view</h1></div>
+      <button class="btn-link btn-lock" id="lock">Lock</button>
+    </div>
+    <div class="parent-layout">
+      <nav class="parent-sidebar">
+        ${SECTIONS.map(
+          (s) => `<button data-section="${s.id}" class="${activeSection === s.id ? "active" : ""}">${s.label}</button>`
+        ).join("")}
+      </nav>
+      <div class="parent-content" id="parent-content">
+        ${
+          activeSection === "children"
+            ? childrenSectionHtml(children)
+            : activeSection === "words"
+              ? wordListsSectionHtml(words)
+              : reportsSectionHtml(reportSections)
+        }
+      </div>
+    </div>
+  `;
 
+  document.getElementById("back").onclick = onExit;
+  document.getElementById("lock").onclick = () => {
+    sessionStorage.removeItem(PIN_SESSION_KEY);
+    onExit();
+  };
+
+  root.querySelectorAll("[data-section]").forEach((btn) => {
+    btn.onclick = () => {
+      activeSection = btn.dataset.section;
+      renderDashboard(root, { onExit });
+    };
+  });
+
+  if (activeSection === "children") bindChildrenSection(root, { onExit });
+  if (activeSection === "words") bindWordListsSection(root, { onExit });
+  // Reports is read-only — nothing to bind.
+}
+
+// ---- Children section ----------------------------------------------------
+
+function childrenSectionHtml(children) {
+  return `
     <div class="card">
       <h2>Children</h2>
       <p class="muted">Add a child and assign a grade (1–6). Their Study/Practice/Quiz word list comes from that grade.</p>
@@ -120,7 +179,63 @@ async function renderDashboard(root, { onExit }) {
       </form>
       <p id="add-child-error" class="muted" style="display:none"></p>
     </div>
+  `;
+}
 
+function bindChildrenSection(root, { onExit }) {
+  document.getElementById("add-child-form").onsubmit = async (e) => {
+    e.preventDefault();
+    const name = document.getElementById("new-child-name").value.trim();
+    const grade = parseInt(document.getElementById("new-child-grade").value, 10);
+    const errorEl = document.getElementById("add-child-error");
+    if (!name) return;
+    try {
+      await createChild(name, grade);
+      renderDashboard(root, { onExit });
+    } catch (err) {
+      errorEl.textContent = "Couldn't add child: " + err.message;
+      errorEl.style.display = "";
+    }
+  };
+
+  root.querySelectorAll(".child-save").forEach((btn) => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      const row = root.querySelector(`.child-row[data-row="${id}"]`);
+      const name = row.querySelector(".child-name").value.trim();
+      const grade = parseInt(row.querySelector(".child-grade").value, 10);
+      if (!name) return;
+      btn.disabled = true;
+      try {
+        await updateChild(id, { name, gradeLevel: grade });
+        renderDashboard(root, { onExit });
+      } catch (err) {
+        alert("Couldn't save: " + err.message);
+        btn.disabled = false;
+      }
+    };
+  });
+
+  root.querySelectorAll(".child-toggle").forEach((btn) => {
+    btn.onclick = async () => {
+      const id = btn.dataset.id;
+      const isActive = btn.dataset.active === "true";
+      btn.disabled = true;
+      try {
+        await setChildActive(id, !isActive);
+        renderDashboard(root, { onExit });
+      } catch (err) {
+        alert("Couldn't update: " + err.message);
+        btn.disabled = false;
+      }
+    };
+  });
+}
+
+// ---- Word lists section ---------------------------------------------------
+
+function wordListsSectionHtml(words) {
+  return `
     <div class="card">
       <h2>Word lists</h2>
       <p class="muted">Add words to a grade one at a time, or upload a CSV. Existing words are never overwritten — duplicates (same spelling, same grade) are skipped automatically.</p>
@@ -169,103 +284,10 @@ async function renderDashboard(root, { onExit }) {
         }
       </div>
     </div>
-
-    ${sections
-      .map(
-        ({ child, sessions, flagged }) => `
-      <div class="card">
-        <h2>${child.name} <span class="muted">(Grade ${child.grade_level})</span></h2>
-        <p class="muted">Recent quiz scores</p>
-        ${
-          sessions.length
-            ? `<table class="results">
-                <thead><tr><th>Date</th><th>Score</th><th>Size</th></tr></thead>
-                <tbody>
-                  ${sessions
-                    .map(
-                      (s) => `
-                    <tr>
-                      <td>${new Date(s.completed_at).toLocaleDateString()}</td>
-                      <td>${s.score}/${s.total}</td>
-                      <td>${s.size}</td>
-                    </tr>
-                  `
-                    )
-                    .join("")}
-                </tbody>
-              </table>`
-            : `<p class="muted">No completed quizzes yet.</p>`
-        }
-        <p class="muted" style="margin-top:16px">Currently flagged words (${flagged.length})</p>
-        ${
-          flagged.length
-            ? `<p>${flagged.map((w) => `<span class="flag-pill">${w.word}</span>`).join(" ")}</p>`
-            : `<p class="muted">None right now.</p>`
-        }
-      </div>
-    `
-      )
-      .join("")}
-    <button class="btn-link" id="back">Back to home</button>
-    <button class="btn-link" id="lock">Lock parent view</button>
   `;
+}
 
-  document.getElementById("back").onclick = onExit;
-  document.getElementById("lock").onclick = () => {
-    sessionStorage.removeItem(PIN_SESSION_KEY);
-    onExit();
-  };
-
-  document.getElementById("add-child-form").onsubmit = async (e) => {
-    e.preventDefault();
-    const name = document.getElementById("new-child-name").value.trim();
-    const grade = parseInt(document.getElementById("new-child-grade").value, 10);
-    const errorEl = document.getElementById("add-child-error");
-    if (!name) return;
-    try {
-      await createChild(name, grade);
-      renderDashboard(root, { onExit });
-    } catch (err) {
-      errorEl.textContent = "Couldn't add child: " + err.message;
-      errorEl.style.display = "";
-    }
-  };
-
-  root.querySelectorAll(".child-save").forEach((btn) => {
-    btn.onclick = async () => {
-      const id = btn.dataset.id;
-      const row = root.querySelector(`.child-row[data-row="${id}"]`);
-      const name = row.querySelector(".child-name").value.trim();
-      const grade = parseInt(row.querySelector(".child-grade").value, 10);
-      if (!name) return;
-      btn.disabled = true;
-      try {
-        await updateChild(id, { name, gradeLevel: grade });
-        renderDashboard(root, { onExit });
-      } catch (err) {
-        alert("Couldn't save: " + err.message);
-        btn.disabled = false;
-      }
-    };
-  });
-
-  root.querySelectorAll(".child-toggle").forEach((btn) => {
-    btn.onclick = async () => {
-      const id = btn.dataset.id;
-      const isActive = btn.dataset.active === "true";
-      btn.disabled = true;
-      try {
-        await setChildActive(id, !isActive);
-        renderDashboard(root, { onExit });
-      } catch (err) {
-        alert("Couldn't update: " + err.message);
-        btn.disabled = false;
-      }
-    };
-  });
-
-  // ---- Word list management ---------------------------------------
-
+function bindWordListsSection(root, { onExit }) {
   document.getElementById("word-grade-select").onchange = (e) => {
     selectedWordGrade = parseInt(e.target.value, 10);
     renderDashboard(root, { onExit });
@@ -346,6 +368,50 @@ async function renderDashboard(root, { onExit }) {
       }
     };
   });
+}
+
+// ---- Reports section (read-only) ------------------------------------------
+
+function reportsSectionHtml(sections) {
+  if (!sections.length) {
+    return `<div class="card"><p class="muted">No active children yet — add one in the Children tab to see reports here.</p></div>`;
+  }
+  return sections
+    .map(
+      ({ child, sessions, flagged }) => `
+    <div class="card">
+      <h2>${child.name} <span class="muted">(Grade ${child.grade_level})</span></h2>
+      <p class="muted">Recent quiz scores</p>
+      ${
+        sessions.length
+          ? `<table class="results">
+              <thead><tr><th>Date</th><th>Score</th><th>Size</th></tr></thead>
+              <tbody>
+                ${sessions
+                  .map(
+                    (s) => `
+                  <tr>
+                    <td>${new Date(s.completed_at).toLocaleDateString()}</td>
+                    <td>${s.score}/${s.total}</td>
+                    <td>${s.size}</td>
+                  </tr>
+                `
+                  )
+                  .join("")}
+              </tbody>
+            </table>`
+          : `<p class="muted">No completed quizzes yet.</p>`
+      }
+      <p class="muted" style="margin-top:16px">Currently flagged words (${flagged.length})</p>
+      ${
+        flagged.length
+          ? `<p>${flagged.map((w) => `<span class="flag-pill">${w.word}</span>`).join(" ")}</p>`
+          : `<p class="muted">None right now.</p>`
+      }
+    </div>
+  `
+    )
+    .join("");
 }
 
 function escapeAttr(str) {

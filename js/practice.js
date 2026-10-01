@@ -21,6 +21,7 @@ import { sampleUnique, pickCoverageSet } from "./util.js";
  * stored order, session.current_index says where to pick back up.
  */
 export async function renderPractice(root, { child, allWords, mode, onExit, noticeIfEmpty, resume }) {
+  document.body.classList.add("kid-theme");
   let session, words;
 
   if (resume) {
@@ -107,7 +108,10 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
     submitting = false;
     const noticeHtml = noticeIfEmpty && index === 0 ? `<p class="muted">${noticeIfEmpty}</p>` : "";
     root.innerHTML = `
-      <h2>${mode === "review" ? "Review missed words" : "Practice"} — ${child.name}</h2>
+      <div class="topbar">
+        <button class="btn-back" id="exit">← Home</button>
+        <div class="topbar-title"><h2>${mode === "review" ? "Review missed words" : "Practice"} — ${child.name}</h2></div>
+      </div>
       ${noticeHtml}
       <div class="progress-dots">
         ${words.map((_, i) => `<span class="dot ${i < index ? "done" : ""}"></span>`).join("")}
@@ -136,7 +140,6 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
         </form>
         <div id="feedback"></div>
       </div>
-      <button class="btn-link" id="exit">Exit to home</button>
     `;
 
     document.getElementById("repeat").onclick = playWord;

@@ -49,13 +49,18 @@ function childBanner() {
   `;
 }
 
+const CHILD_AVATARS = ["🦊", "🐼", "🦁", "🐸", "🐯", "🐨"];
+
 function childPicker() {
   return `
     <div class="child-picker">
       ${state.children
         .map(
-          (c) => `
-        <button data-child="${c.id}" class="${c.id === state.activeChildId ? "active" : ""}">${c.name} <span class="muted">(Gr ${c.grade_level})</span></button>
+          (c, i) => `
+        <button data-child="${c.id}" class="${c.id === state.activeChildId ? "active" : ""}">
+          <span class="avatar">${CHILD_AVATARS[i % CHILD_AVATARS.length]}</span>
+          ${c.name} <span class="muted">(Gr ${c.grade_level})</span>
+        </button>
       `
         )
         .join("")}
@@ -64,6 +69,8 @@ function childPicker() {
 }
 
 async function renderHome() {
+  document.body.classList.remove("parent-theme", "has-sidebar");
+  document.body.classList.add("kid-theme");
   root.innerHTML = `<p class="muted">Loading…</p>`;
   await ensureChildren();
 
@@ -155,11 +162,11 @@ async function renderHome() {
         ? `<div class="card"><p><strong>No words yet for Grade ${child.grade_level}.</strong></p><p class="muted">Add words for this grade in the database, then come back.</p></div>`
         : `
     <div class="card stack">
-      <button class="btn-secondary" id="go-study">Study (learn all ${words.length} words)</button>
-      <button class="btn-primary" id="go-practice">${resumable && resumable.mode === "practice" ? "Start a new Practice set" : "Practice"} (${Math.min(CONFIG.practiceSetSize, words.length)} words, untimed)</button>
-      <button class="btn-primary" id="go-quiz">${resumable && resumable.mode === "quiz" ? "Start a new Quiz" : "Quiz"} (${Math.min(CONFIG.quizSetSize, words.length)} words, timed)</button>
-      <button class="btn-secondary" id="go-review">
-        Review missed words ${flagged.length ? `<span class="flag-pill">${flagged.length}</span>` : ""}
+      <button class="btn-study" id="go-study">📖 Study (learn all ${words.length} words)</button>
+      <button class="btn-primary" id="go-practice">✏️ ${resumable && resumable.mode === "practice" ? "Start a new Practice set" : "Practice"} (${Math.min(CONFIG.practiceSetSize, words.length)} words, untimed)</button>
+      <button class="btn-quiz" id="go-quiz">⏱️ ${resumable && resumable.mode === "quiz" ? "Start a new Quiz" : "Quiz"} (${Math.min(CONFIG.quizSetSize, words.length)} words, timed)</button>
+      <button class="btn-review" id="go-review">
+        🚩 Review missed words ${flagged.length ? `<span class="flag-pill">${flagged.length}</span>` : ""}
       </button>
     </div>`
     }

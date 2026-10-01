@@ -7,11 +7,14 @@ import { speak } from "./tts.js";
  * (timed test).
  */
 export function renderStudy(root, { child, allWords, onExit }) {
+  document.body.classList.add("kid-theme");
   root.innerHTML = `
-    <h1>Study — ${child.name}</h1>
+    <div class="topbar">
+      <button class="btn-back" id="exit">← Home</button>
+      <div class="topbar-title"><h1>Study — ${child.name}</h1></div>
+    </div>
     <p class="muted">Look, listen, and learn all ${allWords.length} words before practicing. No scoring here.</p>
     <div class="stack" id="word-list"></div>
-    <button class="btn-link" id="exit" style="margin-top:16px">Exit to home</button>
   `;
 
   document.getElementById("exit").onclick = onExit;

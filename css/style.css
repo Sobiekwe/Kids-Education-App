@@ -9,6 +9,36 @@
   --incorrect: #dc2626;
   --border: #e5e7eb;
   --radius: 16px;
+  --study: #0d9488;
+  --quiz: #ea580c;
+  --review: #db2777;
+}
+
+/* Kid-facing screens (Home/Study/Practice/Quiz/Review): bright, playful palette. */
+body.kid-theme {
+  --bg: linear-gradient(160deg, #fef3c7 0%, #e0e7ff 55%, #fce7f3 100%);
+  --card: #ffffff;
+  --ink: #1f2430;
+  --muted: #6b6478;
+  --primary: #7c3aed;
+  --primary-ink: #ffffff;
+  --correct: #16a34a;
+  --incorrect: #e11d48;
+  --border: #e9d5ff;
+  --study: #0d9488;
+  --quiz: #ea580c;
+  --review: #db2777;
+}
+
+/* Parent view: calmer, more "grown-up" so it visually reads as a different section. */
+body.parent-theme {
+  --bg: #f4f5f9;
+  --card: #ffffff;
+  --ink: #1f2430;
+  --muted: #6b7280;
+  --primary: #4f46e5;
+  --primary-ink: #ffffff;
+  --border: #e5e7eb;
 }
 
 * { box-sizing: border-box; }
@@ -19,13 +49,25 @@ body {
   background: var(--bg);
   color: var(--ink);
   min-height: 100vh;
+  transition: background 0.2s ease;
 }
 
 #app {
   max-width: 480px;
   margin: 0 auto;
-  padding: 24px 16px 60px;
+  padding: 20px 16px 60px;
   min-height: 100vh;
+}
+
+@media (min-width: 700px) {
+  #app { max-width: 760px; padding: 32px 24px 72px; }
+}
+
+body.has-sidebar #app {
+  max-width: 480px;
+}
+@media (min-width: 700px) {
+  body.has-sidebar #app { max-width: 1060px; }
 }
 
 h1 { font-size: 1.5rem; margin: 0 0 4px; }
@@ -40,6 +82,52 @@ p { line-height: 1.5; }
   padding: 20px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.06);
   margin-bottom: 16px;
+}
+
+body.kid-theme .card {
+  box-shadow: 0 4px 14px rgba(124, 58, 237, 0.08);
+  border: 2px solid #f3e8ff;
+}
+
+/* ---- Top bar (back-to-home, screen title) -------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.topbar .btn-back {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--card);
+  color: var(--primary);
+  border: 2px solid var(--border);
+  font-weight: 700;
+}
+
+body.kid-theme .topbar .btn-back {
+  box-shadow: 0 2px 6px rgba(124, 58, 237, 0.15);
+}
+
+.topbar .topbar-title {
+  flex: 1;
+  min-width: 0;
+}
+.topbar .topbar-title h1,
+.topbar .topbar-title h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.topbar .btn-lock {
+  flex: 0 0 auto;
+  width: auto;
+  padding: 10px 16px;
+  font-size: 0.85rem;
 }
 
 .child-banner {
@@ -73,6 +161,8 @@ button {
   width: 100%;
 }
 
+body.kid-theme .btn-secondary { background: #f3e8ff; color: var(--primary); }
+
 .btn-link {
   background: transparent;
   color: var(--muted);
@@ -82,9 +172,14 @@ button {
 
 .stack > * + * { margin-top: 12px; }
 
+/* Mode buttons on the kids' home screen get their own bright colors. */
+.btn-study { background: var(--study); color: #fff; width: 100%; font-size: 1.05rem; }
+.btn-quiz { background: var(--quiz); color: #fff; width: 100%; font-size: 1.05rem; }
+.btn-review { background: var(--review); color: #fff; width: 100%; font-size: 1.05rem; }
+
 .child-picker {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -92,9 +187,17 @@ button {
 .child-picker button {
   background: var(--card);
   border: 2px solid var(--border);
-  padding: 24px 12px;
-  font-size: 1.1rem;
+  padding: 20px 12px;
+  font-size: 1.15rem;
   color: var(--ink);
+}
+
+body.kid-theme .child-picker button { font-size: 1.2rem; }
+
+.child-picker button .avatar {
+  display: block;
+  font-size: 1.8rem;
+  margin-bottom: 6px;
 }
 
 .child-picker button.active {
@@ -102,6 +205,7 @@ button {
   background: #eef2ff;
   color: var(--primary);
 }
+body.kid-theme .child-picker button.active { background: #f3e8ff; }
 
 .progress-dots {
   display: flex;
@@ -120,6 +224,7 @@ button {
 
 input[type="text"],
 input[type="password"],
+input[type="file"],
 select {
   width: 100%;
   font-size: 1.05rem;
@@ -168,6 +273,7 @@ select:focus { outline: none; border-color: var(--primary); }
   padding: 10px 14px;
   font-size: 0.95rem;
 }
+body.kid-theme .icon-btn { background: #f3e8ff; }
 
 .row { display: flex; gap: 10px; }
 .row > * { flex: 1; }
@@ -194,4 +300,58 @@ table.results th, table.results td {
   padding: 2px 10px;
   font-size: 0.8rem;
   font-weight: 600;
+}
+
+/* ---- Parent view: sidebar layout ------------------------------------ */
+
+.parent-layout {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+@media (min-width: 700px) {
+  .parent-layout { flex-direction: row; align-items: flex-start; gap: 24px; }
+}
+
+.parent-sidebar {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+}
+@media (min-width: 700px) {
+  .parent-sidebar {
+    flex-direction: column;
+    width: 200px;
+    flex: 0 0 200px;
+    position: sticky;
+    top: 24px;
+    gap: 6px;
+  }
+}
+
+.parent-sidebar button {
+  background: var(--card);
+  border: 2px solid var(--border);
+  color: var(--ink);
+  text-align: left;
+  white-space: nowrap;
+  width: auto;
+  flex: 0 0 auto;
+  font-size: 0.95rem;
+}
+@media (min-width: 700px) {
+  .parent-sidebar button { width: 100%; white-space: normal; }
+}
+
+.parent-sidebar button.active {
+  border-color: var(--primary);
+  background: #eef2ff;
+  color: var(--primary);
+  font-weight: 700;
+}
+
+.parent-content {
+  flex: 1;
+  min-width: 0;
 }

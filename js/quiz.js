@@ -22,6 +22,7 @@ import { pickCoverageSet } from "./util.js";
  * back up.
  */
 export async function renderQuiz(root, { child, allWords, onExit, resume }) {
+  document.body.classList.add("kid-theme");
   let session, words;
 
   if (resume) {
@@ -138,8 +139,11 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
   function renderQuestion() {
     advancing = false;
     root.innerHTML = `
-      <h2>Timed spelling quiz — ${child.name}</h2>
-      <p class="muted">Not an exact bee simulation — just a timed practice quiz.</p>
+      <div class="topbar">
+        <button class="btn-back" id="exit">← Home</button>
+        <div class="topbar-title"><h2>Timed spelling quiz — ${child.name}</h2></div>
+      </div>
+      <p class="muted">Not an exact bee simulation — just a timed practice quiz. Your spot is saved if you leave early.</p>
       <div class="progress-dots">
         ${words.map((_, i) => `<span class="dot ${i < index ? "done" : ""}"></span>`).join("")}
       </div>
@@ -169,6 +173,11 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
       </div>
     `;
 
+    document.getElementById("exit").onclick = () => {
+      clearTimer();
+      stopSpeaking();
+      onExit(); // session stays in_progress — resumable later, like leaving the tab
+    };
     document.getElementById("repeat").onclick = () => playRepeatOrSentence(currentWord().word);
     document.getElementById("sentence").onclick = () => {
       const w = currentWord();
