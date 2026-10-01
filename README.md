@@ -4,6 +4,23 @@ A private, login-free spelling practice and quiz app for two kids, built
 against `Spelling Bee App — Phase 1 Requirements (MVP)`. Plain HTML/CSS/JS —
 no build step, no framework install needed.
 
+## Staging environment
+
+There are two environments, kept separate on purpose so testing never touches
+the kids' real data:
+
+- **`main` branch** → production. Deploys to the live Vercel URL. Points at
+  the production Supabase project (Netochukwu/Chioma's real scores live
+  here). Only updated when changes have been tested on staging first.
+- **`staging` branch** → testing. Deploys to its own Vercel preview URL.
+  Points at a separate Supabase project with the same schema but no real
+  kids' data. All new features are built and pushed here first.
+
+To promote staging to production once something's been tested: merge
+`staging` into `main` and push (`git checkout main && git merge staging &&
+git push`). Do this only when explicitly asked — new work should never land
+on `main` by default.
+
 ## One-time setup
 
 1. **Database**: open your Supabase project → SQL Editor → New query, paste
