@@ -1,9 +1,15 @@
-// Browser text-to-speech helper (F09). Uses the standard Web Speech API —
-// no server, no API key, works offline once voices have loaded.
+// Audio playback (F09). Prefers pre-generated Google Cloud TTS audio files
+// (same voice on every browser/device — see js/db.js generateAndStoreWordAudio
+// and api/tts.js) and falls back to the browser's built-in Web Speech API
+// for any word that doesn't have pre-generated audio yet (e.g. it was just
+// added and audio generation is still catching up, or failed).
 
 import { CONFIG } from "./config.js";
 
 let voice = null;
+let currentAudioEl = null;
+
+// ---- Fallback: browser speech synthesis ----------------------------------
 
 // Known clear, standard-American-accent voices, roughly in order of quality,
 // across the browsers/OSes a family is likely to use. speechSynthesis's
@@ -31,10 +37,6 @@ function pickVoice() {
     }
   }
 
-  // Strongest signal of quality: a downloaded OS-level neural voice.
-  // Windows 11 names these like "Microsoft Ava Online (Natural)"; macOS/iOS
-  // "Enhanced"/"Premium" voices are the equivalent. Always prefer these over
-  // the generic default voices if the device has one installed.
   const enVoices = voices.filter((v) => v.lang && v.lang.toLowerCase().startsWith("en"));
   const neural = enVoices.find((v) => /natural|enhanced|premium/i.test(v.name));
   if (neural) {
@@ -62,12 +64,7 @@ if (typeof speechSynthesis !== "undefined") {
   speechSynthesis.onvoiceschanged = pickVoice;
 }
 
-/**
- * Speaks text aloud. Returns a promise that resolves when speech finishes,
- * or rejects on a genuine audio failure (per F09: an audio failure must
- * stop the question, not be scored as a spelling miss).
- */
-export function speak(text) {
+function speakViaBrowser(text) {
   return new Promise((resolve, reject) => {
     if (typeof speechSynthesis === "undefined") {
       reject(new Error("Speech synthesis is not supported on this device/browser."));
@@ -88,8 +85,46 @@ export function speak(text) {
   });
 }
 
+// ---- Preferred: pre-generated audio file ----------------------------------
+
+function playAudioUrl(url) {
+  return new Promise((resolve, reject) => {
+    stopSpeaking();
+    const audioEl = new Audio(url);
+    currentAudioEl = audioEl;
+    audioEl.onended = () => resolve();
+    audioEl.onerror = () => reject(new Error("Couldn't play the audio file."));
+    audioEl.play().catch(reject);
+  });
+}
+
+/**
+ * Speaks a word's spelling aloud: plays the pre-generated audio file if this
+ * word has one, otherwise falls back to the browser's built-in voice.
+ */
+export function playWord(word) {
+  if (word.audio_word_url) return playAudioUrl(word.audio_word_url);
+  return speakViaBrowser(word.word);
+}
+
+/** Speaks a word's example sentence aloud, same preference order as playWord. */
+export function playSentence(word) {
+  if (!word.sentence) return Promise.resolve();
+  if (word.audio_sentence_url) return playAudioUrl(word.audio_sentence_url);
+  return speakViaBrowser(word.sentence);
+}
+
+/** Back-compat: speak arbitrary text with the browser fallback voice (used nowhere with pre-generated audio, since that's always tied to a specific word). */
+export function speak(text) {
+  return speakViaBrowser(text);
+}
+
 export function stopSpeaking() {
   if (typeof speechSynthesis !== "undefined") speechSynthesis.cancel();
+  if (currentAudioEl) {
+    currentAudioEl.pause();
+    currentAudioEl = null;
+  }
 }
 
 /** Lists voices available on THIS device/browser, for the voice-check page. */

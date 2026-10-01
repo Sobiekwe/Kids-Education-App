@@ -49,12 +49,72 @@ export async function addWords(gradeLevel, words) {
     .upsert(rows, { onConflict: "word,grade_level", ignoreDuplicates: true })
     .select();
   if (error) throw error;
-  return { added: data.length, skipped: rows.length - data.length };
+  return { added: data.length, skipped: rows.length - data.length, insertedWords: data };
 }
 
 export async function setWordActive(id, active) {
   const { error } = await supabase.from("words").update({ active }).eq("id", id);
   if (error) throw error;
+}
+
+// ---- Word audio (pre-generated Google Cloud TTS, one voice everywhere) ---
+
+/**
+ * Calls our own /api/tts serverless function (never Google directly — that's
+ * where the API key lives, server-side only) and returns the resulting MP3
+ * as a Blob ready to upload to Storage.
+ */
+async function synthesizeAudio(text) {
+  const res = await fetch("/api/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || `Text-to-speech request failed (${res.status})`);
+  }
+  const { audioContent } = await res.json();
+  const binary = atob(audioContent);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: "audio/mpeg" });
+}
+
+async function uploadWordAudio(path, blob) {
+  const { error } = await supabase.storage.from("word-audio").upload(path, blob, {
+    contentType: "audio/mpeg",
+    upsert: true,
+  });
+  if (error) throw error;
+  const { data } = supabase.storage.from("word-audio").getPublicUrl(path);
+  return data.publicUrl;
+}
+
+/**
+ * Generates (via Google Cloud TTS) and stores the spelling-word audio, and
+ * the example-sentence audio if there is one, for a single word row, then
+ * saves both URLs back onto that row. Safe to call again later (e.g. a
+ * manual "regenerate" option) — upsert overwrites the same file paths.
+ */
+export async function generateAndStoreWordAudio(word) {
+  const audio_word_url = await uploadWordAudio(`${word.id}-word.mp3`, await synthesizeAudio(word.word));
+  let audio_sentence_url = null;
+  if (word.sentence) {
+    audio_sentence_url = await uploadWordAudio(`${word.id}-sentence.mp3`, await synthesizeAudio(word.sentence));
+  }
+  const { error } = await supabase.from("words").update({ audio_word_url, audio_sentence_url }).eq("id", word.id);
+  if (error) throw error;
+  return { audio_word_url, audio_sentence_url };
+}
+
+/** Words (any grade, or one grade) still missing pre-generated audio — used by the backfill. */
+export async function fetchWordsMissingAudio(gradeLevel) {
+  let query = supabase.from("words").select("*").is("audio_word_url", null);
+  if (gradeLevel) query = query.eq("grade_level", gradeLevel);
+  const { data, error } = await query;
+  if (error) throw error;
+  return data;
 }
 
 // ---- Children (parent-managed accounts) --------------------------------

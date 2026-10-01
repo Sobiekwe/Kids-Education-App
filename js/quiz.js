@@ -9,7 +9,7 @@ import {
   touchWordsShown,
   getSessionAttempts,
 } from "./db.js";
-import { speak, stopSpeaking } from "./tts.js";
+import { playWord as playWordAudio, playSentence as playSentenceAudio, stopSpeaking } from "./tts.js";
 import { isCorrectSpelling } from "./grading.js";
 import { pickCoverageSet } from "./util.js";
 
@@ -110,7 +110,7 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
     if (area) area.textContent = "🔊 Playing…";
     document.getElementById("submit-btn")?.setAttribute("disabled", "true");
     try {
-      await speak(currentWord().word);
+      await playWordAudio(currentWord());
       if (area) area.textContent = "";
       document.getElementById("submit-btn")?.removeAttribute("disabled");
       startCountdown();
@@ -127,10 +127,19 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
     }
   }
 
-  async function playRepeatOrSentence(text) {
-    // Repeat / spoken sentence never reset the countdown (F05).
+  async function playRepeat() {
+    // Repeat never resets the countdown (F05).
     try {
-      await speak(text);
+      await playWordAudio(currentWord());
+    } catch {
+      // Non-fatal here since the timer is already running independent of audio.
+    }
+  }
+
+  async function playSentenceAloud() {
+    // Spoken sentence never resets the countdown (F05).
+    try {
+      await playSentenceAudio(currentWord());
     } catch {
       // Non-fatal here since the timer is already running independent of audio.
     }
@@ -178,13 +187,8 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
       stopSpeaking();
       onExit(); // session stays in_progress — resumable later, like leaving the tab
     };
-    document.getElementById("repeat").onclick = () => playRepeatOrSentence(currentWord().word);
-    document.getElementById("sentence").onclick = () => {
-      const w = currentWord();
-      // Spoken aloud with the real word in it, same as a real bee's
-      // "use it in a sentence" — masking only matters for visible text.
-      if (w.sentence) playRepeatOrSentence(w.sentence);
-    };
+    document.getElementById("repeat").onclick = playRepeat;
+    document.getElementById("sentence").onclick = playSentenceAloud;
 
     const form = document.getElementById("answer-form");
     form.onsubmit = (e) => {

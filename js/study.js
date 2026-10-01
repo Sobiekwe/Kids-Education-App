@@ -1,4 +1,4 @@
-import { speak } from "./tts.js";
+import { playWord, playSentence } from "./tts.js";
 
 /**
  * Study mode: browse the full word list with spelling, meaning, sentence,
@@ -42,8 +42,8 @@ export function renderStudy(root, { child, allWords, onExit }) {
     btn.onclick = async () => {
       const w = allWords[btn.dataset.play];
       try {
-        await speak(w.word);
-        if (w.sentence) await speak(w.sentence);
+        await playWord(w);
+        await playSentence(w);
       } catch (err) {
         console.warn("Audio failed:", err.message);
       }

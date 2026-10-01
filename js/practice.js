@@ -7,7 +7,7 @@ import {
   touchWordsShown,
   getSessionAttempts,
 } from "./db.js";
-import { speak, stopSpeaking } from "./tts.js";
+import { playWord as playWordAudio, playSentence as playSentenceAudio, stopSpeaking } from "./tts.js";
 import { isCorrectSpelling } from "./grading.js";
 import { sampleUnique, pickCoverageSet } from "./util.js";
 
@@ -81,7 +81,7 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
     const area = document.getElementById("audio-status");
     if (area) area.textContent = "🔊 Playing…";
     try {
-      await speak(currentWord().word);
+      await playWordAudio(currentWord());
       if (area) area.textContent = "";
     } catch (err) {
       if (area) {
@@ -97,7 +97,7 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
     try {
       // Spoken aloud with the real word in it, same as a real bee's
       // "use it in a sentence" — masking only matters for visible text.
-      await speak(w.sentence);
+      await playSentenceAudio(w);
     } catch {
       // Non-fatal for a bonus feature; ignore.
     }

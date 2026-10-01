@@ -9,6 +9,7 @@ import {
   fetchWordsForManagement,
   addWords,
   setWordActive,
+  generateAndStoreWordAudio,
 } from "./db.js";
 import { parseCsv, csvRowsToWords } from "./util.js";
 
@@ -287,6 +288,31 @@ function wordListsSectionHtml(words) {
   `;
 }
 
+/**
+ * Generates and stores Google Cloud TTS audio for each newly-added word, one
+ * at a time, updating statusEl as it goes. Best-effort: a failure for one
+ * word (e.g. a transient network hiccup) is reported but doesn't stop the
+ * rest — a word without audio yet just falls back to the browser's voice
+ * until it's retried (re-saving the word, e.g. re-uploading the same CSV
+ * row, regenerates it).
+ */
+async function generateAudioForNewWords(insertedWords, statusEl) {
+  if (!insertedWords.length) return;
+  let failed = 0;
+  for (let i = 0; i < insertedWords.length; i++) {
+    statusEl.textContent = `Generating natural voice audio… (${i + 1}/${insertedWords.length})`;
+    try {
+      await generateAndStoreWordAudio(insertedWords[i]);
+    } catch (err) {
+      failed += 1;
+      console.warn(`Couldn't generate audio for "${insertedWords[i].word}":`, err.message);
+    }
+  }
+  statusEl.textContent = failed
+    ? `Done, but audio failed for ${failed} word(s) — they'll use the browser's voice for now.`
+    : `Audio ready for all ${insertedWords.length} new word(s).`;
+}
+
 function bindWordListsSection(root, { onExit }) {
   document.getElementById("word-grade-select").onchange = (e) => {
     selectedWordGrade = parseInt(e.target.value, 10);
@@ -323,6 +349,7 @@ function bindWordListsSection(root, { onExit }) {
       }
       const result = await addWords(selectedWordGrade, parsedWords);
       statusEl.textContent = `Added ${result.added} new word(s) to Grade ${selectedWordGrade}. Skipped ${result.skipped} already-existing word(s).`;
+      await generateAudioForNewWords(result.insertedWords, statusEl);
       setTimeout(() => renderDashboard(root, { onExit }), 1200);
     } catch (err) {
       statusEl.textContent = "Couldn't import that file: " + err.message;
@@ -345,9 +372,12 @@ function bindWordListsSection(root, { onExit }) {
     statusEl.textContent = "Saving…";
     try {
       const result = await addWords(selectedWordGrade, [{ word, meaning, sentence, pos, acceptedVariants }]);
-      statusEl.textContent = result.added
-        ? `Added "${word}" to Grade ${selectedWordGrade}.`
-        : `"${word}" is already in Grade ${selectedWordGrade} — not added again.`;
+      if (result.added) {
+        statusEl.textContent = `Added "${word}" to Grade ${selectedWordGrade}.`;
+        await generateAudioForNewWords(result.insertedWords, statusEl);
+      } else {
+        statusEl.textContent = `"${word}" is already in Grade ${selectedWordGrade} — not added again.`;
+      }
       setTimeout(() => renderDashboard(root, { onExit }), 900);
     } catch (err) {
       statusEl.textContent = "Couldn't add word: " + err.message;
