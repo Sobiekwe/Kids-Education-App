@@ -28,6 +28,10 @@ export const CONFIG = {
   flagAfterConsecutiveMisses: 2,
   clearAfterConsecutiveCorrectSessions: 2,
 
+  // Learn-gate: how many not-yet-known words make up one required "sitting"
+  // before Practice/Quiz unlock. See learn.js / app.js's gate logic.
+  learnBatchSize: 10,
+
   // Voice (F09). Leave null to auto-pick the clearest available US-English
   // voice. To force a specific one, open /voices.html on the device you
   // care about, listen to the options, and paste the exact name you liked

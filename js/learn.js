@@ -45,8 +45,17 @@ export function countWordDistractors(word, allWords) {
  * `filterWordIds`, when passed, locks the session to exactly those words
  * (e.g. "Study them first" from the Quiz nudge, or "Study my missed words"
  * from the Quiz review) and hides the All/Unmastered toggle.
+ *
+ * `gated: true` turns this into a required "sitting" (the Learn-gate
+ * feature): `filterWordIds` is required, the All/Unmastered toggle and the
+ * mini-quiz Skip buttons are hidden, and a word that isn't both marked
+ * "I know it" AND answered correctly on both mini-quizzes is requeued
+ * (a few cards later, not immediately) instead of being left behind — so
+ * the sitting only ends once every word in it is genuinely known. The
+ * caller (app.js) decides when a sitting is required and which words are in
+ * it; this just runs it.
  */
-export async function renderLearn(root, { child, allWords, onExit, filterWordIds }) {
+export async function renderLearn(root, { child, allWords, onExit, filterWordIds, gated = false }) {
   document.body.classList.add("kid-theme");
 
   let patterns = {};
@@ -60,9 +69,11 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
   const fixedList = Array.isArray(filterWordIds);
   let filterMode = fixedList ? "fixed" : "unmastered"; // 'all' | 'unmastered' | 'fixed'
   let cards = [];
+  let queue = []; // gated mode only: mutable work queue, re-entrant on a miss
   let index = 0;
   let knownThisSession = 0;
   let learningThisSession = 0;
+  let selfAssessedKnown = false; // gated mode only: did they tap "I know it" for the current card
 
   function statusOf(w) {
     return statusMap[w.id] || "new";
@@ -77,8 +88,35 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
       cards = allWords;
     }
     index = 0;
+    if (gated) queue = [...cards];
   }
   computeCards();
+
+  /** Gated mode only: removes the current word from the front of the queue
+   * and, unless it was fully cleared this round, reinserts it a few cards
+   * later so it comes back around instead of being left for last. */
+  function advanceGated(word, cleared) {
+    queue.shift();
+    if (!cleared) {
+      const pos = Math.min(3, queue.length);
+      queue.splice(pos, 0, word);
+    }
+    renderCard();
+  }
+
+  /** Called once both mini-quizzes for a card have run (or been skipped
+   * structurally, e.g. no sentence to blank). In gated mode, decides whether
+   * the word is done (self-assessed "I know it" AND status is still
+   * "known" -- i.e. it survived both checks without being demoted) or needs
+   * another lap; otherwise just advances the free-roam list. */
+  function proceedAfterChecks(w) {
+    if (gated) {
+      const cleared = selfAssessedKnown && statusMap[w.id] === "known";
+      advanceGated(w, cleared);
+    } else {
+      nextCard();
+    }
+  }
 
   function escapeHtml(str) {
     const div = document.createElement("div");
@@ -96,13 +134,20 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
   }
 
   function filterToggleHtml() {
-    if (fixedList) return "";
+    if (fixedList || gated) return "";
     return `
       <div class="filter-toggle">
         <button class="${filterMode === "unmastered" ? "active" : ""}" data-filter="unmastered">Still learning</button>
         <button class="${filterMode === "all" ? "active" : ""}" data-filter="all">All ${allWords.length} words</button>
       </div>
     `;
+  }
+
+  /** "Word 2 of 5" for free-roam Learn; "4 words left today" for a gated
+   * sitting, since the queue reorders and reinserts words as it goes. */
+  function progressLabel() {
+    if (gated) return `${queue.length} word${queue.length === 1 ? "" : "s"} left today`;
+    return `Word ${index + 1} of ${cards.length}`;
   }
 
   function wireTopbar() {
@@ -121,20 +166,27 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
 
   function renderCard() {
     stopSpeaking();
-    if (!cards.length) {
-      renderAllCaughtUp();
-      return;
+    if (gated) {
+      if (!queue.length) {
+        renderGatedComplete();
+        return;
+      }
+    } else {
+      if (!cards.length) {
+        renderAllCaughtUp();
+        return;
+      }
+      if (index >= cards.length) {
+        renderComplete();
+        return;
+      }
     }
-    if (index >= cards.length) {
-      renderComplete();
-      return;
-    }
-    const w = cards[index];
+    const w = gated ? queue[0] : cards[index];
     root.innerHTML = `
-      ${topbarHtml("Learn")}
+      ${topbarHtml(gated ? "Today's words" : "Learn")}
       ${filterToggleHtml()}
       <div class="card">
-        <p class="muted">Word ${index + 1} of ${cards.length}</p>
+        <p class="muted">${progressLabel()}</p>
         <div style="text-align:center; margin:20px 0">
           <div style="font-size:1.8rem; font-weight:800">${w.word}</div>
         </div>
@@ -158,10 +210,10 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
 
   function renderRevealed(w) {
     root.innerHTML = `
-      ${topbarHtml("Learn")}
+      ${topbarHtml(gated ? "Today's words" : "Learn")}
       ${filterToggleHtml()}
       <div class="card">
-        <p class="muted">Word ${index + 1} of ${cards.length}</p>
+        <p class="muted">${progressLabel()}</p>
         <div style="text-align:center; margin:12px 0">
           <div style="font-size:1.8rem; font-weight:800">${w.word}</div>
           ${w.part_of_speech ? `<span class="muted">(${w.part_of_speech})</span>` : ""}
@@ -189,6 +241,7 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
   async function markStatus(w, status) {
     if (status === "known") knownThisSession += 1;
     else learningThisSession += 1;
+    selfAssessedKnown = status === "known";
     statusMap[w.id] = status;
     try {
       await setWordStatus(child.id, w.id, status);
@@ -243,7 +296,7 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
         cont.onclick = onContinue;
       };
     });
-    document.getElementById("mcq-skip").onclick = onContinue;
+    document.getElementById("mcq-skip")?.addEventListener("click", onContinue);
   }
 
   function renderMeaningCheck(w) {
@@ -258,14 +311,14 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
     }
     const options = shuffle([{ id: "correct", text: w.meaning }, ...distractors.map((d, i) => ({ id: `d${i}`, text: d.meaning }))]);
     root.innerHTML = `
-      ${topbarHtml("Learn")}
+      ${topbarHtml(gated ? "Today's words" : "Learn")}
       <div class="card">
         <p><strong>What does "${w.word}" mean?</strong></p>
         <div class="stack" style="margin-top:12px">
           ${options.map((o) => `<button class="btn-secondary mcq-option" data-opt="${o.id}">${escapeHtml(o.text)}</button>`).join("")}
         </div>
         <div class="row" style="margin-top:14px">
-          <button class="btn-link" id="mcq-skip">Skip</button>
+          ${gated ? "" : `<button class="btn-link" id="mcq-skip">Skip</button>`}
           <button class="btn-primary" id="mcq-continue" style="display:none">Continue</button>
         </div>
       </div>
@@ -289,17 +342,17 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
   function renderUseItCheck(w) {
     const blanked = blankSentence(w);
     if (!blanked) {
-      nextCard();
+      proceedAfterChecks(w);
       return;
     }
     const distractors = pickWordDistractors(w);
     if (!distractors.length) {
-      nextCard();
+      proceedAfterChecks(w);
       return;
     }
     const options = shuffle([{ id: "correct", text: w.word }, ...distractors.map((d, i) => ({ id: `d${i}`, text: d.word }))]);
     root.innerHTML = `
-      ${topbarHtml("Learn")}
+      ${topbarHtml(gated ? "Today's words" : "Learn")}
       <div class="card">
         <p><strong>Which word fits?</strong></p>
         <p class="muted">"${escapeHtml(blanked)}"</p>
@@ -308,7 +361,7 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
         </div>
         <div id="full-sentence" class="muted" style="margin-top:10px"></div>
         <div class="row" style="margin-top:14px">
-          <button class="btn-link" id="mcq-skip">Skip</button>
+          ${gated ? "" : `<button class="btn-link" id="mcq-skip">Skip</button>`}
           <button class="btn-primary" id="mcq-continue" style="display:none">Next word</button>
         </div>
       </div>
@@ -326,7 +379,7 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
         }
       },
       "Next word",
-      () => nextCard()
+      () => proceedAfterChecks(w)
     );
   }
 
@@ -373,6 +426,22 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
       computeCards();
       renderCard();
     };
+    document.getElementById("home").onclick = onExit;
+  }
+
+  /** Gated mode only: shown once every word in the sitting has been both
+   * self-marked "I know it" and answered correctly on both mini-quizzes. */
+  function renderGatedComplete() {
+    root.innerHTML = `
+      <h2>Awesome work, ${child.name}! 🎉</h2>
+      <div class="card score-hero">
+        <div class="big">✅</div>
+        <p class="muted">Today's words are done — Practice and Quiz are unlocked!</p>
+      </div>
+      <div class="card stack">
+        <button class="btn-primary" id="home">Back to home</button>
+      </div>
+    `;
     document.getElementById("home").onclick = onExit;
   }
 

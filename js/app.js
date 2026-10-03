@@ -1,9 +1,22 @@
 import { CONFIG } from "./config.js";
-import { fetchWords, fetchChildren, getFlaggedWords, getRecentSessions, findResumableSession, abandonSession, fetchWordStatusMap } from "./db.js";
+import {
+  fetchWords,
+  fetchChildren,
+  getFlaggedWords,
+  getRecentSessions,
+  findResumableSession,
+  abandonSession,
+  fetchWordStatusMap,
+  findActiveLearnGate,
+  fetchLastShownMap,
+  startSession,
+  completeSession,
+} from "./db.js";
 import { renderLearn } from "./learn.js";
 import { renderPractice } from "./practice.js";
 import { renderQuiz } from "./quiz.js";
 import { renderParentView } from "./parent.js";
+import { pickCoverageSet } from "./util.js";
 
 const root = document.getElementById("app");
 
@@ -132,12 +145,57 @@ async function renderHome() {
     console.warn("Could not load flagged words:", err.message);
   }
 
+  let statusMap = {};
   let knownCount = null;
   try {
-    const statusMap = await fetchWordStatusMap(state.activeChildId);
+    statusMap = await fetchWordStatusMap(state.activeChildId);
     knownCount = words.filter((w) => statusMap[w.id] === "known").length;
   } catch (err) {
     console.warn("Could not load word-status counts:", err.message);
+  }
+
+  // Learn-gate (F-new): a required "sitting" of up to CONFIG.learnBatchSize
+  // not-yet-known words that must all reach "known" before Practice/Quiz
+  // unlock. The batch is a `sessions` row (mode "learn_gate") so the same
+  // words keep coming up across repeated Home visits until cleared, rather
+  // than being re-picked (possibly differently) every time. Review stays
+  // open regardless -- it's not gated.
+  let gateDueWords = [];
+  let gateLocked = false;
+  if (words.length) {
+    try {
+      let gateSession = await findActiveLearnGate(state.activeChildId);
+      if (gateSession) {
+        const batchWords = gateSession.word_ids.map((id) => words.find((w) => w.id === id)).filter(Boolean);
+        const stillDue = batchWords.filter((w) => (statusMap[w.id] || "new") !== "known");
+        if (stillDue.length === 0) {
+          // This sitting's words are all known now -- close it out.
+          await completeSession(gateSession.id, batchWords.length, batchWords.length).catch(() => {});
+          gateSession = null;
+        } else {
+          gateDueWords = stillDue;
+          gateLocked = true;
+        }
+      }
+      if (!gateSession) {
+        const outstanding = words.filter((w) => (statusMap[w.id] || "new") !== "known");
+        if (outstanding.length > 0) {
+          let lastShownMap = {};
+          try {
+            lastShownMap = await fetchLastShownMap(state.activeChildId);
+          } catch (err) {
+            console.warn("Could not load last-shown data for the Learn gate:", err.message);
+          }
+          gateDueWords = pickCoverageSet(outstanding, lastShownMap, CONFIG.learnBatchSize);
+          await startSession(state.activeChildId, "learn_gate", gateDueWords.length, gateDueWords.map((w) => w.id));
+          gateLocked = true;
+        }
+      }
+    } catch (err) {
+      // Best-effort: if the gate itself can't be computed, don't block the
+      // kids from Practice/Quiz over it.
+      console.warn("Could not compute the Learn gate (continuing unlocked):", err.message);
+    }
   }
 
   let resumable = null;
@@ -177,6 +235,18 @@ async function renderHome() {
     ${
       !words.length
         ? `<div class="card"><p><strong>No words yet for Grade ${child.grade_level}.</strong></p><p class="muted">Add words for this grade in the database, then come back.</p></div>`
+        : gateLocked
+        ? `
+    <div class="card" style="border:2px solid var(--study, var(--primary))">
+      <p><strong>📚 Learn today's words first</strong></p>
+      <p class="muted">${gateDueWords.length} word${gateDueWords.length === 1 ? "" : "s"} to learn — Practice and Quiz unlock once they're all known.</p>
+      <button class="btn-study" id="go-gated-learn">Start today's words</button>
+    </div>
+    <div class="card stack">
+      <button class="btn-review" id="go-review">
+        🚩 Review missed words ${flagged.length ? `<span class="flag-pill">${flagged.length}</span>` : ""}
+      </button>
+    </div>`
         : `
     <div class="card stack">
       <button class="btn-study" id="go-learn">📖 Learn (meanings, patterns &amp; sentences)</button>
@@ -210,7 +280,16 @@ async function renderHome() {
     };
   });
 
-  if (words.length) {
+  if (words.length && gateLocked) {
+    document.getElementById("go-gated-learn").onclick = () =>
+      renderLearn(root, {
+        child,
+        allWords: words,
+        onExit: renderHome,
+        filterWordIds: gateDueWords.map((w) => w.id),
+        gated: true,
+      });
+  } else if (words.length) {
     document.getElementById("go-learn").onclick = () =>
       renderLearn(root, {
         child,
@@ -236,7 +315,9 @@ async function renderHome() {
         onExit: renderHome,
       });
     };
+  }
 
+  if (words.length) {
     document.getElementById("go-review").onclick = async () => {
       if (!flagged.length) {
         // F11: if none flagged, offer ordinary Practice instead.

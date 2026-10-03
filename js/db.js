@@ -246,6 +246,32 @@ export async function findResumableSession(childId) {
   return data;
 }
 
+/**
+ * The in-progress "learn_gate" session for a child, if any — this is the
+ * current required Learn sitting (up to CONFIG.learnBatchSize not-yet-known
+ * words) that must be cleared before Practice/Quiz unlock. Stays the same
+ * batch across repeated Home visits until every one of its words reaches
+ * "known" (app.js closes it out then), so progress through a sitting
+ * survives the child leaving and coming back.
+ */
+export async function findActiveLearnGate(childId) {
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("*")
+    .eq("child_id", childId)
+    .eq("status", "in_progress")
+    .eq("mode", "learn_gate")
+    .order("started_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn("findActiveLearnGate failed (non-fatal):", error.message);
+    return null;
+  }
+  if (!data || !data.word_ids?.length) return null;
+  return data;
+}
+
 /** All recorded attempts for a session, oldest first — used to reconstruct
  * scoring/results when resuming an interrupted session. */
 export async function getSessionAttempts(sessionId) {
