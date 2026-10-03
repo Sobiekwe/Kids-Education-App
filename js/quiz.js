@@ -59,6 +59,9 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
     }
     const newWords = words.filter((w) => (statusMap[w.id] || "new") === "new");
 
+    // Hard requirement, not a nudge: a word that's never been studied in
+    // Learn can't be quizzed on yet -- "this is a spelling bee, not a
+    // memorization bee." No "quiz anyway" bypass.
     if (newWords.length > 0) {
       const choice = await new Promise((resolve) => {
         root.innerHTML = `
@@ -68,30 +71,25 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
           </div>
           <div class="card">
             <p><strong>You haven't studied ${newWords.length} of these ${words.length} words yet.</strong></p>
-            <p class="muted">That's okay — this is just a heads-up, not a requirement.</p>
+            <p class="muted">Learn them first, then come back to quiz yourself.</p>
             <div class="stack" style="margin-top:12px">
-              <button class="btn-primary" id="study-first">Study them first</button>
-              <button class="btn-secondary" id="start-anyway">Start quiz anyway</button>
+              <button class="btn-primary" id="study-first">Study them now</button>
             </div>
           </div>
         `;
         document.getElementById("exit").onclick = () => resolve("exit");
         document.getElementById("study-first").onclick = () => resolve("study");
-        document.getElementById("start-anyway").onclick = () => resolve("quiz");
       });
       if (choice === "exit") {
         onExit();
         return;
       }
-      if (choice === "study") {
-        renderLearn(root, {
-          child,
-          allWords: newWords,
-          onExit: () => renderQuiz(root, { child, allWords, onExit }),
-        });
-        return;
-      }
-      // choice === "quiz": fall through and start with the same `words` set.
+      renderLearn(root, {
+        child,
+        allWords: newWords,
+        onExit: () => renderQuiz(root, { child, allWords, onExit }),
+      });
+      return;
     }
 
     try {
