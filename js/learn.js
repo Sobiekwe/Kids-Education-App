@@ -2,6 +2,38 @@ import { fetchPatterns, fetchWordStatusMap, setWordStatus } from "./db.js";
 import { playWord, playSentence, stopSpeaking } from "./tts.js";
 import { sampleUnique } from "./util.js";
 
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/** Blanks the word's own form in its sentence, case-insensitively, whole
+ * word only. Returns null if the word doesn't appear verbatim (e.g. a
+ * sentence using a different inflected form) -- never invents one.
+ * Exported so Parent view can flag words whose sentence can't be blanked. */
+export function blankSentence(word) {
+  if (!word.sentence) return null;
+  const re = new RegExp(`\\b${escapeRegExp(word.word)}\\b`, "i");
+  if (!re.test(word.sentence)) return null;
+  return word.sentence.replace(re, "_____");
+}
+
+/** How many other words' meanings are usable as wrong options for this
+ * word's meaning-check (same part of speech, falling back to any word).
+ * Exported so Parent view can flag words with too few (< 3) to quiz well. */
+export function countMeaningDistractors(word, allWords) {
+  if (!word.meaning) return 0;
+  const pool = allWords.filter((o) => o.id !== word.id && o.meaning && o.meaning !== word.meaning);
+  const sameP = pool.filter((o) => o.part_of_speech && o.part_of_speech === word.part_of_speech);
+  return (sameP.length >= 3 ? sameP : pool).length;
+}
+
+/** Same idea for the use-it-in-a-sentence check's word-choice options. */
+export function countWordDistractors(word, allWords) {
+  const pool = allWords.filter((o) => o.id !== word.id && o.word.toLowerCase() !== word.word.toLowerCase());
+  const sameP = pool.filter((o) => o.part_of_speech && o.part_of_speech === word.part_of_speech);
+  return (sameP.length >= 3 ? sameP : pool).length;
+}
+
 /**
  * Learn mode (Phase 3): untimed, low-pressure word cards, replacing the old
  * "Study" screen. For each word: hear it, tap to reveal meaning + sentence +
@@ -52,20 +84,6 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
     const div = document.createElement("div");
     div.textContent = str;
     return div.innerHTML;
-  }
-
-  function escapeRegExp(str) {
-    return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  }
-
-  /** Blanks the word's own form in its sentence, case-insensitively, whole
-   * word only. Returns null if the word doesn't appear verbatim (e.g. a
-   * sentence using a different inflected form) -- never invents one. */
-  function blankSentence(w) {
-    if (!w.sentence) return null;
-    const re = new RegExp(`\\b${escapeRegExp(w.word)}\\b`, "i");
-    if (!re.test(w.sentence)) return null;
-    return w.sentence.replace(re, "_____");
   }
 
   function topbarHtml(title) {

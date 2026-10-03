@@ -10,16 +10,21 @@ import {
   addWords,
   setWordActive,
   generateAndStoreWordAudio,
+  fetchPatterns,
+  updateWordTags,
+  fetchWordStatusMap,
 } from "./db.js";
 import { parseCsv, csvRowsToWords } from "./util.js";
+import { blankSentence, countMeaningDistractors, countWordDistractors } from "./learn.js";
 
 const PIN_SESSION_KEY = "parentUnlocked";
 let selectedWordGrade = 4;
-let activeSection = "children"; // "children" | "words" | "reports" — which sidebar panel is showing
+let activeSection = "children"; // "children" | "words" | "patterns" | "reports" — which sidebar panel is showing
 
 const SECTIONS = [
   { id: "children", label: "👪 Children" },
   { id: "words", label: "📝 Word Lists" },
+  { id: "patterns", label: "🧩 Patterns" },
   { id: "reports", label: "📊 Reports" },
 ];
 
@@ -93,13 +98,30 @@ async function renderDashboard(root, { onExit }) {
     const activeChildren = children.filter((c) => c.active);
     reportSections = await Promise.all(
       activeChildren.map(async (child) => {
-        const [sessions, flagged] = await Promise.all([
+        const [sessions, flagged, statusMap, gradeWords] = await Promise.all([
           getRecentSessions(child.id, 5).catch(() => []),
           getFlaggedWords(child.id).catch(() => []),
+          fetchWordStatusMap(child.id).catch(() => ({})),
+          fetchWordsForManagement(child.grade_level).catch(() => []),
         ]);
-        return { child, sessions, flagged };
+        const activeWords = gradeWords.filter((w) => w.active);
+        const counts = { new: 0, learning: 0, known: 0 };
+        activeWords.forEach((w) => {
+          const s = statusMap[w.id] || "new";
+          counts[s] = (counts[s] || 0) + 1;
+        });
+        return { child, sessions, flagged, counts, total: activeWords.length };
       })
     );
+  }
+
+  let patterns = {};
+  if (activeSection === "patterns") {
+    try {
+      patterns = await fetchPatterns();
+    } catch (err) {
+      console.warn("Could not load patterns:", err.message);
+    }
   }
 
   root.innerHTML = `
@@ -120,7 +142,9 @@ async function renderDashboard(root, { onExit }) {
             ? childrenSectionHtml(children)
             : activeSection === "words"
               ? wordListsSectionHtml(words)
-              : reportsSectionHtml(reportSections)
+              : activeSection === "patterns"
+                ? patternsSectionHtml(words, patterns)
+                : reportsSectionHtml(reportSections)
         }
       </div>
     </div>
@@ -141,6 +165,7 @@ async function renderDashboard(root, { onExit }) {
 
   if (activeSection === "children") bindChildrenSection(root, { onExit });
   if (activeSection === "words") bindWordListsSection(root, { onExit });
+  if (activeSection === "patterns") bindPatternsSection(root, { onExit }, words, patterns);
   // Reports is read-only — nothing to bind.
 }
 
@@ -400,6 +425,94 @@ function bindWordListsSection(root, { onExit }) {
   });
 }
 
+// ---- Patterns section -------------------------------------------------
+
+function patternsSectionHtml(words, patterns) {
+  const patternOptions = (selected) =>
+    `<option value="">—</option>` +
+    Object.values(patterns)
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((p) => `<option value="${p.id}" ${p.id === selected ? "selected" : ""}>${p.name}</option>`)
+      .join("");
+
+  return `
+    <div class="card">
+      <h2>Spelling patterns &amp; origins</h2>
+      <p class="muted">Correct a word's pattern tags or origin here, then Save. "Origin verified" stays unchecked until you've confirmed it yourself — it's never set automatically.</p>
+      <div class="row" style="align-items:center; gap:8px; margin-bottom:16px">
+        <label for="pattern-grade-select" class="muted" style="flex:0 0 auto">Grade:</label>
+        <select id="pattern-grade-select">
+          ${[1, 2, 3, 4, 5, 6].map((g) => `<option value="${g}" ${g === selectedWordGrade ? "selected" : ""}>Grade ${g}</option>`).join("")}
+        </select>
+      </div>
+      <div class="stack" id="pattern-rows" style="max-height:480px; overflow-y:auto">
+        ${
+          words.length
+            ? words
+                .map((w) => {
+                  const meaningOk = countMeaningDistractors(w, words) >= 3;
+                  const useItOk = blankSentence(w) !== null && countWordDistractors(w, words) >= 3;
+                  return `
+          <div class="card pattern-row" data-id="${w.id}" style="margin:0">
+            <div class="row" style="align-items:center; gap:8px; flex-wrap:wrap">
+              <strong style="flex:1 1 120px">${w.word}</strong>
+              <span class="muted" style="flex:0 0 auto">${w.part_of_speech || "—"}</span>
+              <span class="flag-pill" style="background:${meaningOk ? "#f0fdf4" : "#fff7ed"}; color:${meaningOk ? "#15803d" : "#c2410c"}">Meaning check: ${meaningOk ? "OK" : "Flagged"}</span>
+              <span class="flag-pill" style="background:${useItOk ? "#f0fdf4" : "#fff7ed"}; color:${useItOk ? "#15803d" : "#c2410c"}">Use-it check: ${useItOk ? "OK" : "Flagged"}</span>
+            </div>
+            <div class="row" style="align-items:center; gap:8px; margin-top:10px; flex-wrap:wrap">
+              <select class="pattern-primary" style="flex:1 1 150px">${patternOptions(w.pattern_primary)}</select>
+              <select class="pattern-secondary" style="flex:1 1 150px">${patternOptions(w.pattern_secondary)}</select>
+              <input type="text" class="pattern-origin" placeholder="Origin (optional)" value="${escapeAttr(w.origin || "")}" style="flex:1 1 150px" />
+              <label class="muted" style="flex:0 0 auto; display:flex; align-items:center; gap:4px">
+                <input type="checkbox" class="pattern-origin-verified" ${w.origin_verified ? "checked" : ""} /> Verified
+              </label>
+              <button class="btn-secondary pattern-save" style="flex:0 0 auto; width:auto; padding:8px 12px; font-size:0.85rem">Save</button>
+            </div>
+          </div>
+        `;
+                })
+                .join("")
+            : `<p class="muted">No words yet for Grade ${selectedWordGrade}.</p>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+function bindPatternsSection(root, { onExit }, words, patterns) {
+  document.getElementById("pattern-grade-select").onchange = (e) => {
+    selectedWordGrade = parseInt(e.target.value, 10);
+    renderDashboard(root, { onExit });
+  };
+
+  root.querySelectorAll(".pattern-row").forEach((rowEl) => {
+    const id = parseInt(rowEl.dataset.id, 10);
+    rowEl.querySelector(".pattern-save").onclick = async () => {
+      const btn = rowEl.querySelector(".pattern-save");
+      btn.disabled = true;
+      btn.textContent = "Saving…";
+      try {
+        await updateWordTags(id, {
+          patternPrimary: rowEl.querySelector(".pattern-primary").value,
+          patternSecondary: rowEl.querySelector(".pattern-secondary").value,
+          origin: rowEl.querySelector(".pattern-origin").value,
+          originVerified: rowEl.querySelector(".pattern-origin-verified").checked,
+        });
+        btn.textContent = "Saved ✓";
+        setTimeout(() => {
+          btn.textContent = "Save";
+          btn.disabled = false;
+        }, 1200);
+      } catch (err) {
+        alert("Couldn't save: " + err.message);
+        btn.textContent = "Save";
+        btn.disabled = false;
+      }
+    };
+  });
+}
+
 // ---- Reports section (read-only) ------------------------------------------
 
 function reportsSectionHtml(sections) {
@@ -408,9 +521,15 @@ function reportsSectionHtml(sections) {
   }
   return sections
     .map(
-      ({ child, sessions, flagged }) => `
+      ({ child, sessions, flagged, counts, total }) => `
     <div class="card">
       <h2>${child.name} <span class="muted">(Grade ${child.grade_level})</span></h2>
+      <p class="muted">Word status (${total} active words)</p>
+      <div class="row" style="gap:8px; margin-bottom:16px">
+        <span class="flag-pill" style="background:#f3f4f6; color:#374151">New: ${counts.new}</span>
+        <span class="flag-pill" style="background:#fff7ed; color:#c2410c">Learning: ${counts.learning}</span>
+        <span class="flag-pill" style="background:#f0fdf4; color:#15803d">Known: ${counts.known}</span>
+      </div>
       <p class="muted">Recent quiz scores</p>
       ${
         sessions.length

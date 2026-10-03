@@ -57,6 +57,22 @@ export async function setWordActive(id, active) {
   if (error) throw error;
 }
 
+/** Parent-editable tags: pattern_primary/pattern_secondary (pattern id or
+ * null), origin (text or null), origin_verified (boolean). Used by the
+ * Parent view Patterns tab. */
+export async function updateWordTags(id, { patternPrimary, patternSecondary, origin, originVerified }) {
+  const { error } = await supabase
+    .from("words")
+    .update({
+      pattern_primary: patternPrimary || null,
+      pattern_secondary: patternSecondary || null,
+      origin: origin?.trim() || null,
+      origin_verified: !!originVerified,
+    })
+    .eq("id", id);
+  if (error) throw error;
+}
+
 // ---- Word audio (pre-generated Google Cloud TTS, one voice everywhere) ---
 
 /**
