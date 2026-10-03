@@ -6,6 +6,7 @@ import {
   fetchLastShownMap,
   touchWordsShown,
   getSessionAttempts,
+  fetchPatterns,
 } from "./db.js";
 import { playWord as playWordAudio, playSentence as playSentenceAudio, stopSpeaking } from "./tts.js";
 import { isCorrectSpelling } from "./grading.js";
@@ -23,6 +24,13 @@ import { sampleUnique, pickCoverageSet } from "./util.js";
 export async function renderPractice(root, { child, allWords, mode, onExit, noticeIfEmpty, resume }) {
   document.body.classList.add("kid-theme");
   let session, words;
+
+  let patterns = {};
+  try {
+    patterns = await fetchPatterns();
+  } catch (err) {
+    console.warn("Could not load spelling patterns (non-fatal):", err.message);
+  }
 
   if (resume) {
     session = resume.session;
@@ -75,6 +83,12 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
 
   function currentWord() {
     return words[index];
+  }
+
+  function patternChipHtml(w) {
+    const p = w.pattern_primary && patterns[w.pattern_primary];
+    if (!p) return "";
+    return `<div class="pattern-chip"><strong>${p.name}</strong> — ${p.tip}</div>`;
   }
 
   async function playWord() {
@@ -203,9 +217,10 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
       <div class="feedback ${correct ? "correct" : "incorrect"}">
         <div class="verdict">${correct ? "✅ Correct!" : "❌ Not quite"}</div>
         ${!correct ? `<p>You wrote: <em>${escapeHtml(value)}</em></p>` : ""}
-        <p><strong>${w.word}</strong>${w.pos ? ` <span class="muted">(${w.pos})</span>` : ""}</p>
+        <p><strong>${w.word}</strong>${w.part_of_speech ? ` <span class="muted">(${w.part_of_speech})</span>` : ""}</p>
         ${w.meaning ? `<p>${w.meaning}</p>` : ""}
         ${w.sentence ? `<p class="muted">"${w.sentence}"</p>` : ""}
+        ${patternChipHtml(w)}
         <div class="row" style="margin-top:12px">
           ${!correct ? `<button class="btn-secondary" id="try-again">Try again</button>` : ""}
           <button class="btn-primary" id="next">${index + 1 < words.length ? "Next word" : "Finish"}</button>

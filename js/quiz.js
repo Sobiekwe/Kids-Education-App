@@ -8,6 +8,7 @@ import {
   fetchLastShownMap,
   touchWordsShown,
   getSessionAttempts,
+  fetchPatterns,
 } from "./db.js";
 import { playWord as playWordAudio, playSentence as playSentenceAudio, stopSpeaking } from "./tts.js";
 import { isCorrectSpelling } from "./grading.js";
@@ -24,6 +25,13 @@ import { pickCoverageSet } from "./util.js";
 export async function renderQuiz(root, { child, allWords, onExit, resume }) {
   document.body.classList.add("kid-theme");
   let session, words;
+
+  let patterns = {};
+  try {
+    patterns = await fetchPatterns();
+  } catch (err) {
+    console.warn("Could not load spelling patterns (non-fatal):", err.message);
+  }
 
   if (resume) {
     session = resume.session;
@@ -292,18 +300,20 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
         <div class="card">
           <h2>Words to review (${missed.length})</h2>
           <table class="results">
-            <thead><tr><th>Word</th><th>You wrote</th><th>Meaning</th></tr></thead>
+            <thead><tr><th>Word</th><th>You wrote</th><th>Meaning</th><th>Pattern</th></tr></thead>
             <tbody>
               ${missed
-                .map(
-                  (r) => `
+                .map((r) => {
+                  const p = r.word.pattern_primary && patterns[r.word.pattern_primary];
+                  return `
                 <tr>
                   <td><strong>${r.word.word}</strong></td>
                   <td>${r.isTimeout ? "<em>time's up</em>" : escapeHtml(r.submitted)}</td>
                   <td>${r.word.meaning || ""}</td>
+                  <td>${p ? `<div class="pattern-chip"><strong>${p.name}</strong> — ${p.tip}</div>` : ""}</td>
                 </tr>
-              `
-                )
+              `;
+                })
                 .join("")}
             </tbody>
           </table>

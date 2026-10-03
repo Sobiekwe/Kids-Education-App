@@ -27,7 +27,7 @@ export function renderStudy(root, { child, allWords, onExit }) {
       <div class="row" style="align-items:center; justify-content:space-between;">
         <div>
           <strong style="font-size:1.15rem">${w.word}</strong>
-          ${w.pos ? `<span class="muted"> (${w.pos})</span>` : ""}
+          ${w.part_of_speech ? `<span class="muted"> (${w.part_of_speech})</span>` : ""}
         </div>
         <button class="icon-btn" data-play="${i}">🔊 Play</button>
       </div>

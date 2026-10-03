@@ -384,6 +384,19 @@ export async function touchWordsShown(childId, wordIds) {
   if (error) console.warn("touchWordsShown failed (non-fatal):", error.message);
 }
 
+// ---- Spelling patterns (lookup table, rarely changes) -------------------
+
+let patternsCache = null;
+
+/** Map of pattern id -> { id, name, tip, sort_order }. Cached per page load. */
+export async function fetchPatterns() {
+  if (patternsCache) return patternsCache;
+  const { data, error } = await supabase.from("patterns").select("*").order("sort_order");
+  if (error) throw error;
+  patternsCache = Object.fromEntries(data.map((p) => [p.id, p]));
+  return patternsCache;
+}
+
 export async function getFlaggedWords(childId) {
   const { data, error } = await supabase
     .from("word_progress")
