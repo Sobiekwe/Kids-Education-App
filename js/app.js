@@ -42,15 +42,24 @@ function activeChild() {
   return state.children?.find((c) => c.id === state.activeChildId) || null;
 }
 
+/**
+ * Always re-fetches (no "only once" cache, unlike ensureWordsForGrade below)
+ * -- children now carry points_balance and avatar_id, which change on
+ * essentially every Learn/Practice/Quiz set, so a stale cache here would
+ * leave Home showing yesterday's points balance after every session. A
+ * fresh fetch of two small rows is cheap; falls back to whatever's already
+ * cached (rather than surfacing an error screen) if this particular fetch fails.
+ */
 async function ensureChildren() {
-  if (state.children || state.childrenError) return;
   try {
-    state.children = await fetchChildren();
+    const fresh = await fetchChildren();
+    state.children = fresh;
+    state.childrenError = null;
     if (state.children.length && !state.activeChildId) {
       state.activeChildId = state.children[0].id;
     }
   } catch (err) {
-    state.childrenError = err;
+    if (!state.children) state.childrenError = err;
   }
 }
 
