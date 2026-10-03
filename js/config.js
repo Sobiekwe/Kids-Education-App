@@ -4,10 +4,10 @@
 export const CONFIG = {
   // Supabase project connection (safe to keep the publishable key here —
   // it is the public client key, not the secret one).
-  // STAGING: this branch points at the separate staging Supabase project,
-  // never the production one — see README's "Staging environment" section.
-  supabaseUrl: "https://gnmvxumsuwzgveltdegu.supabase.co",
-  supabasePublishableKey: "sb_publishable_ejiPucGHjjFV0E_VkG3Nsw_eEJTf0rc",
+  // PRODUCTION: this branch points at the live production Supabase project
+  // — never the staging one — see README's "Staging environment" section.
+  supabaseUrl: "https://pbcenkjcxjikoupamdfb.supabase.co",
+  supabasePublishableKey: "sb_publishable_xc5y9KdcA_bq4T70liSu2g_kt_TSid7",
 
   // Children now live in the `children` table (parent view can create/edit/
   // deactivate them) instead of being hardcoded here — see js/parent.js.
