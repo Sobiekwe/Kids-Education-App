@@ -357,6 +357,47 @@ body.kid-theme .filter-toggle button { background: #f3e8ff; }
 .mcq-option.correct { background: #f0fdf4 !important; border: 2px solid var(--correct); color: var(--correct); }
 .mcq-option.incorrect { background: #fef2f2 !important; border: 2px solid var(--incorrect); color: var(--incorrect); }
 
+/* Points balance + Shop link, shown under the child picker on Home. */
+.points-badge {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: 999px;
+  padding: 10px 16px;
+  margin-bottom: 16px;
+  font-weight: 700;
+}
+body.kid-theme .points-badge { border-color: #f3e8ff; }
+.points-badge .btn-link { padding: 4px 8px; text-decoration: none; font-weight: 700; color: var(--primary); }
+
+/* Small "+N points" line shown in Practice/Quiz feedback. */
+.points-earned {
+  color: #b45309;
+  font-weight: 700;
+  margin: 4px 0;
+}
+
+/* Avatar shop grid. */
+.avatar-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+}
+.avatar-card {
+  background: var(--card);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 10px;
+  text-align: center;
+}
+body.kid-theme .avatar-card { border-color: #f3e8ff; }
+.avatar-card.equipped { border-color: var(--primary); background: #f3e8ff; }
+.avatar-card .avatar-emoji { font-size: 2.2rem; margin-bottom: 6px; }
+.avatar-card .avatar-name { font-weight: 700; margin-bottom: 2px; }
+.avatar-card button { font-size: 0.85rem; padding: 10px 8px; }
+
 /* ---- Parent view: sidebar layout ------------------------------------ */
 
 .parent-layout {

@@ -13,6 +13,8 @@ import {
   fetchPatterns,
   updateWordTags,
   fetchWordStatusMap,
+  getTimeStats,
+  getAvgResponseMs,
 } from "./db.js";
 import { parseCsv, csvRowsToWords } from "./util.js";
 import { blankSentence, countMeaningDistractors, countWordDistractors } from "./learn.js";
@@ -98,11 +100,13 @@ async function renderDashboard(root, { onExit }) {
     const activeChildren = children.filter((c) => c.active);
     reportSections = await Promise.all(
       activeChildren.map(async (child) => {
-        const [sessions, flagged, statusMap, gradeWords] = await Promise.all([
+        const [sessions, flagged, statusMap, gradeWords, timeStats, avgResponseMs] = await Promise.all([
           getRecentSessions(child.id, 5).catch(() => []),
           getFlaggedWords(child.id).catch(() => []),
           fetchWordStatusMap(child.id).catch(() => ({})),
           fetchWordsForManagement(child.grade_level).catch(() => []),
+          getTimeStats(child.id, { days: 7 }).catch(() => null),
+          getAvgResponseMs(child.id).catch(() => null),
         ]);
         const activeWords = gradeWords.filter((w) => w.active);
         const counts = { new: 0, learning: 0, known: 0 };
@@ -110,7 +114,7 @@ async function renderDashboard(root, { onExit }) {
           const s = statusMap[w.id] || "new";
           counts[s] = (counts[s] || 0) + 1;
         });
-        return { child, sessions, flagged, counts, total: activeWords.length };
+        return { child, sessions, flagged, counts, total: activeWords.length, timeStats, avgResponseMs };
       })
     );
   }
@@ -515,13 +519,23 @@ function bindPatternsSection(root, { onExit }, words, patterns) {
 
 // ---- Reports section (read-only) ------------------------------------------
 
+/** "1h 12m" / "8m" / "45s" -- never shows more than two units. */
+function formatDuration(ms) {
+  if (!ms || ms < 1000) return "0m";
+  const totalMinutes = Math.round(ms / 60000);
+  if (totalMinutes < 1) return `${Math.round(ms / 1000)}s`;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return hours ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
 function reportsSectionHtml(sections) {
   if (!sections.length) {
     return `<div class="card"><p class="muted">No active children yet — add one in the Children tab to see reports here.</p></div>`;
   }
   return sections
     .map(
-      ({ child, sessions, flagged, counts, total }) => `
+      ({ child, sessions, flagged, counts, total, timeStats, avgResponseMs }) => `
     <div class="card">
       <h2>${child.name} <span class="muted">(Grade ${child.grade_level})</span></h2>
       <p class="muted">Word status (${total} active words)</p>
@@ -529,6 +543,11 @@ function reportsSectionHtml(sections) {
         <span class="flag-pill" style="background:#f3f4f6; color:#374151">New: ${counts.new}</span>
         <span class="flag-pill" style="background:#fff7ed; color:#c2410c">Learning: ${counts.learning}</span>
         <span class="flag-pill" style="background:#f0fdf4; color:#15803d">Known: ${counts.known}</span>
+      </div>
+      <div class="row" style="gap:8px; margin-bottom:16px; flex-wrap:wrap">
+        <span class="flag-pill" style="background:#eef2ff; color:#4338ca">⭐ ${child.points_balance || 0} points</span>
+        <span class="flag-pill" style="background:#eef2ff; color:#4338ca">⏱️ ${timeStats ? formatDuration(timeStats.totalMs) : "—"} this week (${timeStats?.sessionCount || 0} sets)</span>
+        <span class="flag-pill" style="background:#eef2ff; color:#4338ca">⚡ ${avgResponseMs != null ? (avgResponseMs / 1000).toFixed(1) + "s avg response" : "no data yet"}</span>
       </div>
       <p class="muted">Recent quiz scores</p>
       ${

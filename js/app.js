@@ -12,11 +12,13 @@ import {
   fetchLastShownMap,
   startSession,
   completeSession,
+  fetchAvatars,
 } from "./db.js";
 import { renderLearn } from "./learn.js";
 import { renderPractice } from "./practice.js";
 import { renderQuiz } from "./quiz.js";
 import { renderParentView } from "./parent.js";
+import { renderShop } from "./shop.js";
 import { pickCoverageSet } from "./util.js";
 
 const root = document.getElementById("app");
@@ -70,16 +72,14 @@ function childBanner() {
   `;
 }
 
-const CHILD_AVATARS = ["🦊", "🐼", "🦁", "🐸", "🐯", "🐨"];
-
-function childPicker() {
+function childPicker(avatarMap) {
   return `
     <div class="child-picker">
       ${state.children
         .map(
-          (c, i) => `
+          (c) => `
         <button data-child="${c.id}" class="${c.id === state.activeChildId ? "active" : ""}">
-          <span class="avatar">${CHILD_AVATARS[i % CHILD_AVATARS.length]}</span>
+          <span class="avatar">${avatarMap[c.avatar_id]?.emoji || "🙂"}</span>
           ${c.name} <span class="muted">(Gr ${c.grade_level})</span>
         </button>
       `
@@ -145,6 +145,14 @@ async function renderHome() {
   }
 
   const words = state.wordsByGrade[child.grade_level] || [];
+
+  let avatars = [];
+  try {
+    avatars = await fetchAvatars();
+  } catch (err) {
+    console.warn("Could not load avatar catalog:", err.message);
+  }
+  const avatarMap = Object.fromEntries(avatars.map((a) => [a.id, a]));
 
   let flagged = [];
   try {
@@ -234,7 +242,11 @@ async function renderHome() {
   root.innerHTML = `
     <h1>Spelling Practice</h1>
     <p class="muted">Grade ${child.grade_level} word list${words.length ? ` (${words.length} words)` : ""}</p>
-    ${childPicker()}
+    ${childPicker(avatarMap)}
+    <div class="points-badge">
+      <span>⭐ <strong>${child.points_balance || 0}</strong> points</span>
+      <button class="btn-link" id="go-shop">🛍️ Shop</button>
+    </div>
     ${
       knownCount !== null && words.length
         ? `
@@ -360,6 +372,9 @@ async function renderHome() {
       });
     };
   }
+
+  document.getElementById("go-shop").onclick = () =>
+    renderShop(root, { child, onExit: renderHome });
 
   document.getElementById("go-parent").onclick = () =>
     renderParentView(root, { onExit: renderHome });

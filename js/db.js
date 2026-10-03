@@ -160,7 +160,7 @@ export async function createChild(name, gradeLevel) {
   const id = "child_" + crypto.randomUUID();
   const { data, error } = await supabase
     .from("children")
-    .insert({ id, name, grade_level: gradeLevel, active: true })
+    .insert({ id, name, grade_level: gradeLevel, active: true, avatar_id: "fox" })
     .select()
     .single();
   if (error) throw error;
@@ -365,7 +365,7 @@ async function saveProgress(p) {
  * (not a retry, not a timeout), advances the review flag/clear state
  * machine per requirement F10.
  */
-export async function recordAttempt({ sessionId, childId, wordId, submittedAnswer, isCorrect, isTimeout, isFirstAttempt }) {
+export async function recordAttempt({ sessionId, childId, wordId, submittedAnswer, isCorrect, isTimeout, isFirstAttempt, responseMs }) {
   const { error } = await supabase.from("attempts").insert({
     session_id: sessionId,
     child_id: childId,
@@ -374,6 +374,7 @@ export async function recordAttempt({ sessionId, childId, wordId, submittedAnswe
     is_correct: isCorrect,
     is_timeout: isTimeout,
     is_first_attempt: isFirstAttempt,
+    response_ms: responseMs ?? null,
   });
   if (error) throw error;
 
@@ -513,4 +514,103 @@ export async function getFlaggedWords(childId) {
     .eq("flagged", true);
   if (error) throw error;
   return data.map((row) => row.words);
+}
+
+// ---- Points & avatar shop (motivation) ----------------------------------
+
+/**
+ * Awards (or, with a negative amount, deducts) points via the increment_points
+ * SQL function (migration_007) rather than a plain read-modify-write, so a
+ * quick double-answer can't clobber a concurrent award. Best-effort and
+ * fire-and-forget everywhere it's called -- a failed award should never
+ * block the practice/quiz/learn flow it's rewarding. Returns the new
+ * balance, or null if the call failed.
+ */
+export async function awardPoints(childId, amount) {
+  if (!amount) return null;
+  const { data, error } = await supabase.rpc("increment_points", { p_child_id: childId, p_amount: amount });
+  if (error) {
+    console.warn("awardPoints failed (non-fatal):", error.message);
+    return null;
+  }
+  return data;
+}
+
+let avatarsCache = null;
+
+/** The avatar catalog (id, emoji, name, cost), cheapest/first-unlocked first. Cached per page load. */
+export async function fetchAvatars() {
+  if (avatarsCache) return avatarsCache;
+  const { data, error } = await supabase.from("avatars").select("*").order("sort_order");
+  if (error) throw error;
+  avatarsCache = data;
+  return avatarsCache;
+}
+
+/** Which paid (cost > 0) avatars this child has unlocked. Free avatars are
+ * always available and don't need a row here. */
+export async function fetchChildUnlockedAvatarIds(childId) {
+  const { data, error } = await supabase.from("child_avatars").select("avatar_id").eq("child_id", childId);
+  if (error) throw error;
+  return data.map((row) => row.avatar_id);
+}
+
+/**
+ * Atomically spends `cost` points and records the unlock (unlock_avatar SQL
+ * function, migration_007) so a double-click can't grant it for free or
+ * charge twice. Throws if the child doesn't have enough points -- callers
+ * should catch this and show a friendly "not enough points" message rather
+ * than letting it surface as a generic error.
+ */
+export async function unlockAvatar(childId, avatarId, cost) {
+  const { data, error } = await supabase.rpc("unlock_avatar", {
+    p_child_id: childId,
+    p_avatar_id: avatarId,
+    p_cost: cost,
+  });
+  if (error) throw error;
+  return data; // new balance
+}
+
+/** Sets which avatar a child currently has equipped (must already be owned). */
+export async function setChildAvatar(childId, avatarId) {
+  const { error } = await supabase.from("children").update({ avatar_id: avatarId }).eq("id", childId);
+  if (error) throw error;
+}
+
+// ---- Time/speed stats (Parent view Reports) ------------------------------
+
+/**
+ * Total time spent (ms) across completed sessions of any mode in the last
+ * `days` days, plus how many sessions that covers -- for the parent-facing
+ * "how long are they spending on this" question. Derived straight from each
+ * session's started_at/completed_at, no extra tracking needed.
+ */
+export async function getTimeStats(childId, { days = 7 } = {}) {
+  const since = new Date(Date.now() - days * 86400000).toISOString();
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("started_at, completed_at")
+    .eq("child_id", childId)
+    .eq("status", "completed")
+    .gte("completed_at", since);
+  if (error) throw error;
+  const totalMs = data.reduce((sum, s) => sum + (new Date(s.completed_at) - new Date(s.started_at)), 0);
+  return { totalMs, sessionCount: data.length };
+}
+
+/** Average response time (ms) over the most recent `limit` timed Practice/
+ * Review/Quiz attempts that have it recorded. Null if none yet (e.g. right
+ * after migration_007, or a child who's only done Learn so far). */
+export async function getAvgResponseMs(childId, { limit = 50 } = {}) {
+  const { data, error } = await supabase
+    .from("attempts")
+    .select("response_ms")
+    .eq("child_id", childId)
+    .not("response_ms", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  if (!data.length) return null;
+  return Math.round(data.reduce((sum, r) => sum + r.response_ms, 0) / data.length);
 }

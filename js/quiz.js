@@ -11,7 +11,17 @@ import {
   fetchPatterns,
   fetchWordStatusMap,
   setWordStatus,
+  awardPoints,
 } from "./db.js";
+
+// Points for a correct quiz answer: a flat base plus a speed bonus scaled by
+// how much of the countdown was left at submit time -- rewards accuracy
+// first, speed second, never the reverse. A streak bonus on top rewards
+// staying accurate across several words in a row.
+const QUIZ_BASE_POINTS = 5;
+const QUIZ_MAX_SPEED_BONUS = 5;
+const QUIZ_STREAK_LENGTH = 5;
+const QUIZ_STREAK_BONUS = 10;
 import { playWord as playWordAudio, playSentence as playSentenceAudio, stopSpeaking } from "./tts.js";
 import { isCorrectSpelling } from "./grading.js";
 import { pickCoverageSet } from "./util.js";
@@ -109,6 +119,8 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
   let secondsLeft = CONFIG.quizSecondsPerWord;
   let timerRunning = false;
   let advancing = false;
+  let correctStreak = 0;
+  let pointsEarnedThisQuiz = 0;
 
   if (resume) {
     try {
@@ -259,6 +271,7 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
   async function handleTimeout() {
     if (advancing) return;
     advancing = true;
+    correctStreak = 0;
     const w = currentWord();
     results.push({ word: w, submitted: null, isCorrect: false, isTimeout: true });
     try {
@@ -270,6 +283,7 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
         isCorrect: false,
         isTimeout: true,
         isFirstAttempt: true,
+        responseMs: CONFIG.quizSecondsPerWord * 1000,
       });
     } catch (err) {
       console.warn("Could not save timeout attempt:", err.message);
@@ -294,8 +308,20 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
 
     const w = currentWord();
     const correct = isCorrectSpelling(value, w.word, w.accepted_variants);
+    const responseMs = Math.max(0, (CONFIG.quizSecondsPerWord - secondsLeft) * 1000);
     if (correct) score += 1;
     results.push({ word: w, submitted: value, isCorrect: correct, isTimeout: false });
+
+    if (correct) {
+      correctStreak += 1;
+      const speedBonus = Math.round((secondsLeft / CONFIG.quizSecondsPerWord) * QUIZ_MAX_SPEED_BONUS);
+      let pts = QUIZ_BASE_POINTS + speedBonus;
+      if (correctStreak % QUIZ_STREAK_LENGTH === 0) pts += QUIZ_STREAK_BONUS;
+      pointsEarnedThisQuiz += pts;
+      awardPoints(child.id, pts).catch(() => {});
+    } else {
+      correctStreak = 0;
+    }
 
     try {
       await recordAttempt({
@@ -306,6 +332,7 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
         isCorrect: correct,
         isTimeout: false,
         isFirstAttempt: true,
+        responseMs,
       });
     } catch (err) {
       console.warn("Could not save attempt:", err.message);
@@ -339,6 +366,7 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
       <div class="card score-hero">
         <div class="big">${score}/${words.length}</div>
         <p class="muted">correct</p>
+        ${pointsEarnedThisQuiz ? `<p class="points-earned">⭐ +${pointsEarnedThisQuiz} points</p>` : ""}
       </div>
       ${
         missed.length

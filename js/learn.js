@@ -1,6 +1,12 @@
-import { fetchPatterns, fetchWordStatusMap, setWordStatus } from "./db.js";
+import { fetchPatterns, fetchWordStatusMap, setWordStatus, awardPoints } from "./db.js";
 import { playWord, playSentence, stopSpeaking } from "./tts.js";
 import { sampleUnique } from "./util.js";
+
+// Points for a word that goes from not-known to known: self-marked "I know
+// it" AND surviving both mini-quizzes. Only paid out on that transition (see
+// cardWasKnownBefore below) so revisiting already-known words in free-roam
+// Learn's "All words" view can't be farmed for repeat points.
+const LEARN_CLEAR_POINTS = 3;
 
 function escapeRegExp(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -74,6 +80,7 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
   let knownThisSession = 0;
   let learningThisSession = 0;
   let selfAssessedKnown = false; // gated mode only: did they tap "I know it" for the current card
+  let cardWasKnownBefore = false; // was this word already "known" when the card was shown (points-farming guard)
 
   function statusOf(w) {
     return statusMap[w.id] || "new";
@@ -110,8 +117,11 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
    * "known" -- i.e. it survived both checks without being demoted) or needs
    * another lap; otherwise just advances the free-roam list. */
   function proceedAfterChecks(w) {
+    const cleared = selfAssessedKnown && statusMap[w.id] === "known";
+    if (cleared && !cardWasKnownBefore) {
+      awardPoints(child.id, LEARN_CLEAR_POINTS).catch(() => {});
+    }
     if (gated) {
-      const cleared = selfAssessedKnown && statusMap[w.id] === "known";
       advanceGated(w, cleared);
     } else {
       nextCard();
@@ -182,6 +192,7 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
       }
     }
     const w = gated ? queue[0] : cards[index];
+    cardWasKnownBefore = statusOf(w) === "known";
     root.innerHTML = `
       ${topbarHtml(gated ? "Today's words" : "Learn")}
       ${filterToggleHtml()}

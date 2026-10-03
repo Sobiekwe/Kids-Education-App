@@ -8,7 +8,13 @@ import {
   touchWordsShown,
   getSessionAttempts,
   fetchPatterns,
+  awardPoints,
 } from "./db.js";
+
+// Points for a first-attempt-correct answer in Practice or Review. Flat and
+// small -- Practice/Review are untimed and retry-friendly by design, so
+// points here reward steady effort rather than speed (that's Quiz's job).
+const PRACTICE_CORRECT_POINTS = 2;
 import { playWord as playWordAudio, playSentence as playSentenceAudio, stopSpeaking } from "./tts.js";
 import { isCorrectSpelling } from "./grading.js";
 import { sampleUnique, pickCoverageSet } from "./util.js";
@@ -67,6 +73,7 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
   let attemptedFirstCount = 0;
   let currentAttemptCount = 0; // attempts on the CURRENT word
   let submitting = false; // guards against a double-click/double-Enter recording two attempts
+  let questionShownAt = Date.now(); // for response_ms -- reset each renderQuestion()
 
   if (resume) {
     try {
@@ -121,6 +128,7 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
   function renderQuestion() {
     currentAttemptCount = 0;
     submitting = false;
+    questionShownAt = Date.now();
     const noticeHtml = noticeIfEmpty && index === 0 ? `<p class="muted">${noticeIfEmpty}</p>` : "";
     root.innerHTML = `
       <div class="topbar">
@@ -192,11 +200,15 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
     const isFirstAttempt = currentAttemptCount === 1;
     const w = currentWord();
     const correct = isCorrectSpelling(value, w.word, w.accepted_variants);
+    const responseMs = Date.now() - questionShownAt;
 
     if (isFirstAttempt) {
       attemptedFirstCount += 1;
       if (correct) firstAttemptCorrectCount += 1;
     }
+
+    const earnedPoints = isFirstAttempt && correct;
+    if (earnedPoints) awardPoints(child.id, PRACTICE_CORRECT_POINTS).catch(() => {});
 
     try {
       await recordAttempt({
@@ -207,6 +219,7 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
         isCorrect: correct,
         isTimeout: false,
         isFirstAttempt,
+        responseMs,
       });
     } catch (err) {
       console.warn("Could not save attempt (continuing anyway):", err.message);
@@ -217,6 +230,7 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
     fb.innerHTML = `
       <div class="feedback ${correct ? "correct" : "incorrect"}">
         <div class="verdict">${correct ? "✅ Correct!" : "❌ Not quite"}</div>
+        ${earnedPoints ? `<p class="points-earned">⭐ +${PRACTICE_CORRECT_POINTS} points</p>` : ""}
         ${!correct ? `<p>You wrote: <em>${escapeHtml(value)}</em></p>` : ""}
         <p><strong>${w.word}</strong>${w.part_of_speech ? ` <span class="muted">(${w.part_of_speech})</span>` : ""}</p>
         ${w.meaning ? `<p>${w.meaning}</p>` : ""}
