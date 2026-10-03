@@ -8,6 +8,7 @@ import {
   abandonSession,
   fetchWordStatusMap,
   findActiveLearnGate,
+  findLastCompletedLearnGate,
   fetchLastShownMap,
   startSession,
   completeSession,
@@ -27,6 +28,13 @@ const state = {
   wordsByGrade: {}, // cache: gradeLevel -> words[]
   wordsError: null,
 };
+
+/** Same calendar day in the browser's local time zone — used by the Learn
+ * gate's "one sitting per day" rule (don't start a second sitting today
+ * just because more words remain; tomorrow's visit will). */
+function isSameLocalDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
 
 function activeChild() {
   return state.children?.find((c) => c.id === state.activeChildId) || null;
@@ -180,15 +188,29 @@ async function renderHome() {
       if (!gateSession) {
         const outstanding = words.filter((w) => (statusMap[w.id] || "new") !== "known");
         if (outstanding.length > 0) {
-          let lastShownMap = {};
+          // "One sitting per day": if a sitting was already completed today,
+          // Practice/Quiz stay open for the rest of today even though more
+          // words remain -- the next sitting starts tomorrow, not back-to-back.
+          let completedToday = false;
           try {
-            lastShownMap = await fetchLastShownMap(state.activeChildId);
+            const lastCompleted = await findLastCompletedLearnGate(state.activeChildId);
+            if (lastCompleted?.completed_at) {
+              completedToday = isSameLocalDay(new Date(lastCompleted.completed_at), new Date());
+            }
           } catch (err) {
-            console.warn("Could not load last-shown data for the Learn gate:", err.message);
+            console.warn("Could not check for today's completed sitting:", err.message);
           }
-          gateDueWords = pickCoverageSet(outstanding, lastShownMap, CONFIG.learnBatchSize);
-          await startSession(state.activeChildId, "learn_gate", gateDueWords.length, gateDueWords.map((w) => w.id));
-          gateLocked = true;
+          if (!completedToday) {
+            let lastShownMap = {};
+            try {
+              lastShownMap = await fetchLastShownMap(state.activeChildId);
+            } catch (err) {
+              console.warn("Could not load last-shown data for the Learn gate:", err.message);
+            }
+            gateDueWords = pickCoverageSet(outstanding, lastShownMap, CONFIG.learnBatchSize);
+            await startSession(state.activeChildId, "learn_gate", gateDueWords.length, gateDueWords.map((w) => w.id));
+            gateLocked = true;
+          }
         }
       }
     } catch (err) {

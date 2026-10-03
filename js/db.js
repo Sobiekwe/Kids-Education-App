@@ -272,6 +272,29 @@ export async function findActiveLearnGate(childId) {
   return data;
 }
 
+/**
+ * The most recently *completed* learn_gate sitting for a child, if any —
+ * used to tell "already finished a sitting today, leave Practice/Quiz open
+ * for the rest of the day" apart from "needs a new sitting". See app.js's
+ * gate logic (the "one sitting per day" rule).
+ */
+export async function findLastCompletedLearnGate(childId) {
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("*")
+    .eq("child_id", childId)
+    .eq("status", "completed")
+    .eq("mode", "learn_gate")
+    .order("completed_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn("findLastCompletedLearnGate failed (non-fatal):", error.message);
+    return null;
+  }
+  return data;
+}
+
 /** All recorded attempts for a session, oldest first — used to reconstruct
  * scoring/results when resuming an interrupted session. */
 export async function getSessionAttempts(sessionId) {
