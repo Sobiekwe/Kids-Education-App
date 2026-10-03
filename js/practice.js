@@ -1,6 +1,7 @@
 import { CONFIG } from "./config.js";
 import {
   startSession,
+  completeSession,
   recordAttempt,
   updateSessionIndex,
   fetchLastShownMap,
@@ -256,6 +257,14 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
 
   function finishSet() {
     stopSpeaking();
+    // Was missing entirely -- without this, every completed Practice/Review
+    // set stayed "in_progress" forever, so Home's resumable-session banner
+    // kept reappearing after every finished set, and clicking "Continue
+    // where you left off" on one resumed at an out-of-bounds index and broke
+    // (audio/undefined-word errors).
+    completeSession(session.id, firstAttemptCorrectCount, attemptedFirstCount).catch((err) => {
+      console.warn("Could not save final practice score:", err.message);
+    });
     root.innerHTML = `
       <h2>Set complete — ${child.name}</h2>
       <div class="card score-hero">
