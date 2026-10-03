@@ -1,4 +1,3 @@
-import { CONFIG } from "./config.js";
 import {
   getRecentSessions,
   getFlaggedWords,
@@ -15,11 +14,13 @@ import {
   fetchWordStatusMap,
   getTimeStats,
   getAvgResponseMs,
+  fetchMyFamily,
+  setLeaderboardOptIn,
 } from "./db.js";
+import { signOut } from "./auth.js";
 import { parseCsv, csvRowsToWords } from "./util.js";
 import { blankSentence, countMeaningDistractors, countWordDistractors } from "./learn.js";
 
-const PIN_SESSION_KEY = "parentUnlocked";
 let selectedWordGrade = 4;
 let activeSection = "children"; // "children" | "words" | "patterns" | "reports" — which sidebar panel is showing
 
@@ -31,49 +32,16 @@ const SECTIONS = [
 ];
 
 /**
- * Parent view: gated by a shared PIN (soft deterrent, not real security —
- * there's no login system in this app). Lets the parent create/edit/
- * deactivate child accounts and assign each one a grade (1-6), manage each
- * grade's word list, and see read-only recent scores and flagged words.
- * Laid out as a sidebar + content panel so it isn't one long scrolling page.
+ * Parent view: reachable only by a logged-in parent (migration_008 — being
+ * signed in on this device at all is the gate now, replacing the old shared
+ * PIN). Lets the parent create/edit/deactivate child accounts and assign
+ * each one a grade (1-6), manage each grade's word list, and see read-only
+ * recent scores and flagged words. Laid out as a sidebar + content panel so
+ * it isn't one long scrolling page.
  */
 export async function renderParentView(root, { onExit }) {
   document.body.classList.add("parent-theme");
-  if (sessionStorage.getItem(PIN_SESSION_KEY) === "yes") {
-    return renderDashboard(root, { onExit });
-  }
-  renderPinGate(root, { onExit });
-}
-
-function renderPinGate(root, { onExit }) {
-  document.body.classList.remove("has-sidebar");
-  root.innerHTML = `
-    <div class="topbar">
-      <button class="btn-back" id="back">← Home</button>
-      <div class="topbar-title"><h1>Parent view</h1></div>
-    </div>
-    <div class="card">
-      <p>Enter the parent PIN to continue.</p>
-      <form id="pin-form">
-        <input type="password" id="pin-input" inputmode="numeric" placeholder="PIN" autocomplete="off" />
-        <div class="row" style="margin-top:12px">
-          <button type="submit" class="btn-primary">Unlock</button>
-        </div>
-      </form>
-      <p id="pin-error" class="muted" style="display:none">Incorrect PIN.</p>
-    </div>
-  `;
-  document.getElementById("back").onclick = onExit;
-  document.getElementById("pin-form").onsubmit = (e) => {
-    e.preventDefault();
-    const value = document.getElementById("pin-input").value;
-    if (value === CONFIG.parentPin) {
-      sessionStorage.setItem(PIN_SESSION_KEY, "yes");
-      renderDashboard(root, { onExit });
-    } else {
-      document.getElementById("pin-error").style.display = "";
-    }
-  };
+  renderDashboard(root, { onExit });
 }
 
 async function renderDashboard(root, { onExit }) {
@@ -128,11 +96,20 @@ async function renderDashboard(root, { onExit }) {
     }
   }
 
+  let family = null;
+  if (activeSection === "children") {
+    try {
+      family = await fetchMyFamily();
+    } catch (err) {
+      console.warn("Could not load family settings:", err.message);
+    }
+  }
+
   root.innerHTML = `
     <div class="topbar">
       <button class="btn-back" id="back">← Home</button>
       <div class="topbar-title"><h1>Parent view</h1></div>
-      <button class="btn-link btn-lock" id="lock">Lock</button>
+      <button class="btn-link btn-lock" id="sign-out">Log out</button>
     </div>
     <div class="parent-layout">
       <nav class="parent-sidebar">
@@ -143,7 +120,7 @@ async function renderDashboard(root, { onExit }) {
       <div class="parent-content" id="parent-content">
         ${
           activeSection === "children"
-            ? childrenSectionHtml(children)
+            ? childrenSectionHtml(children, family)
             : activeSection === "words"
               ? wordListsSectionHtml(words)
               : activeSection === "patterns"
@@ -155,9 +132,11 @@ async function renderDashboard(root, { onExit }) {
   `;
 
   document.getElementById("back").onclick = onExit;
-  document.getElementById("lock").onclick = () => {
-    sessionStorage.removeItem(PIN_SESSION_KEY);
-    onExit();
+  document.getElementById("sign-out").onclick = async () => {
+    await signOut();
+    // A full reload (rather than onExit -> renderHome) so app.js re-runs its
+    // boot() check and shows the login screen instead of an empty Home.
+    window.location.reload();
   };
 
   root.querySelectorAll("[data-section]").forEach((btn) => {
@@ -167,7 +146,7 @@ async function renderDashboard(root, { onExit }) {
     };
   });
 
-  if (activeSection === "children") bindChildrenSection(root, { onExit });
+  if (activeSection === "children") bindChildrenSection(root, { onExit }, family);
   if (activeSection === "words") bindWordListsSection(root, { onExit });
   if (activeSection === "patterns") bindPatternsSection(root, { onExit }, words, patterns);
   // Reports is read-only — nothing to bind.
@@ -175,8 +154,16 @@ async function renderDashboard(root, { onExit }) {
 
 // ---- Children section ----------------------------------------------------
 
-function childrenSectionHtml(children) {
+function childrenSectionHtml(children, family) {
   return `
+    <div class="card">
+      <h2>🏆 Leaderboard</h2>
+      <p class="muted">When this is on, your kids' first names, grades, points, and avatars appear on the public leaderboard so families can see each other's progress. Full names, scores, flagged words, and time spent are never shown there — only here, in your own Reports.</p>
+      <label class="row" style="align-items:center; gap:8px; cursor:pointer">
+        <input type="checkbox" id="leaderboard-toggle" ${family?.leaderboard_opt_in ? "checked" : ""} />
+        <span>Show my kids on the leaderboard</span>
+      </label>
+    </div>
     <div class="card">
       <h2>Children</h2>
       <p class="muted">Add a child and assign a grade (1–6). Their Study/Practice/Quiz word list comes from that grade.</p>
@@ -212,7 +199,20 @@ function childrenSectionHtml(children) {
   `;
 }
 
-function bindChildrenSection(root, { onExit }) {
+function bindChildrenSection(root, { onExit }, family) {
+  document.getElementById("leaderboard-toggle").onchange = async (e) => {
+    const checkbox = e.target;
+    checkbox.disabled = true;
+    try {
+      await setLeaderboardOptIn(family.id, checkbox.checked);
+    } catch (err) {
+      alert("Couldn't update leaderboard setting: " + err.message);
+      checkbox.checked = !checkbox.checked;
+    } finally {
+      checkbox.disabled = false;
+    }
+  };
+
   document.getElementById("add-child-form").onsubmit = async (e) => {
     e.preventDefault();
     const name = document.getElementById("new-child-name").value.trim();

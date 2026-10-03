@@ -614,3 +614,38 @@ export async function getAvgResponseMs(childId, { limit = 50 } = {}) {
   if (!data.length) return null;
   return Math.round(data.reduce((sum, r) => sum + r.response_ms, 0) / data.length);
 }
+
+// ---- Families & leaderboard (migration_008/009) --------------------------
+
+/** The logged-in parent's own family row (id, name, leaderboard_opt_in). */
+export async function fetchMyFamily() {
+  const { data, error } = await supabase.from("families").select("*").maybeSingle();
+  if (error) throw error;
+  return data;
+}
+
+export async function updateFamilyName(familyId, name) {
+  const { error } = await supabase.from("families").update({ name }).eq("id", familyId);
+  if (error) throw error;
+}
+
+/** Turns the cross-family leaderboard on/off for this family. Off by
+ * default (migration_008) -- a family's kids never appear until a parent
+ * explicitly opts in here. */
+export async function setLeaderboardOptIn(familyId, optIn) {
+  const { error } = await supabase.from("families").update({ leaderboard_opt_in: optIn }).eq("id", familyId);
+  if (error) throw error;
+}
+
+/**
+ * Public leaderboard rows (first name, grade, points, avatar emoji) for
+ * every opted-in family's active children, via the get_leaderboard() SQL
+ * function (migration_009) -- callable without being logged in. Returns
+ * only what's safe to show across families: never full names, scores,
+ * flagged words, or anything from Reports.
+ */
+export async function fetchLeaderboard() {
+  const { data, error } = await supabase.rpc("get_leaderboard");
+  if (error) throw error;
+  return data;
+}
