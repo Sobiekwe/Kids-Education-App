@@ -1,0 +1,55 @@
+-- Migration 005b (staging): load pattern/origin tags for the 50 Grade 4
+-- words. Run AFTER migration_005_patterns.sql. Data as specified by Simon;
+-- origin_verified is left at its default (false) for every row -- never
+-- auto-set to true here.
+
+update words set pattern_primary = 'double_consonants', pattern_secondary = 'adding_endings' where word = 'buttons' and grade_level = 4;
+update words set pattern_primary = 'double_consonants', pattern_secondary = 'unstressed_endings' where word = 'cuddle' and grade_level = 4;
+update words set pattern_primary = 'double_consonants', pattern_secondary = 'adding_endings' where word = 'puffy' and grade_level = 4;
+update words set pattern_primary = 'word_parts', pattern_secondary = 'adding_endings' where word = 'tiptoed' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings' where word = 'clever' and grade_level = 4;
+update words set pattern_primary = 'word_parts' where word = 'basement' and grade_level = 4;
+update words set pattern_primary = 'vowel_teams_r' where word = 'burlap' and grade_level = 4;
+update words set pattern_primary = 'word_parts', pattern_secondary = 'adding_endings' where word = 'wetlands' and grade_level = 4;
+update words set pattern_primary = 'long_vowels', origin = 'Latin' where word = 'invite' and grade_level = 4;
+update words set pattern_primary = 'adding_endings', pattern_secondary = 'double_consonants' where word = 'butterflies' and grade_level = 4;
+update words set pattern_primary = 'soft_c_g' where word = 'kelp' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings', origin = 'Latin' where word = 'property' and grade_level = 4;
+update words set pattern_primary = 'adding_endings', pattern_secondary = 'word_parts' where word = 'carefully' and grade_level = 4;
+update words set pattern_primary = 'double_consonants', pattern_secondary = 'adding_endings' where word = 'sniffling' and grade_level = 4;
+update words set pattern_primary = 'long_vowels' where word = 'beneath' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings', origin = 'Latin' where word = 'tractor' and grade_level = 4;
+update words set pattern_primary = 'vowel_teams_r', origin = 'Latin' where word = 'permit' and grade_level = 4;
+update words set pattern_primary = 'vowel_teams_r' where word = 'awning' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings', pattern_secondary = 'soft_c_g' where word = 'fickle' and grade_level = 4;
+update words set pattern_primary = 'long_vowels', origin = 'Latin' where word = 'relief' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings', origin = 'Latin' where word = 'lunar' and grade_level = 4;
+update words set pattern_primary = 'double_consonants', pattern_secondary = 'vowel_teams_r', origin = 'English (from a person''s name, Charles Boycott)' where word = 'boycotting' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings' where word = 'molten' and grade_level = 4;
+update words set pattern_primary = 'tricky', pattern_secondary = 'long_vowels', origin = 'French' where word = 'elite' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings', pattern_secondary = 'long_vowels' where word = 'woven' and grade_level = 4;
+update words set pattern_primary = 'long_vowels', pattern_secondary = 'word_parts', origin = 'Latin' where word = 'proclaim' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings' where word = 'thimble' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings', origin = 'Latin' where word = 'custody' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings' where word = 'granola' and grade_level = 4;
+update words set pattern_primary = 'double_consonants', pattern_secondary = 'unstressed_endings' where word = 'warrior' and grade_level = 4;
+update words set pattern_primary = 'soft_c_g', origin = 'Latin' where word = 'rigid' and grade_level = 4;
+update words set pattern_primary = 'soft_c_g', pattern_secondary = 'long_vowels', origin = 'French' where word = 'fierce' and grade_level = 4;
+update words set pattern_primary = 'tricky', pattern_secondary = 'unstressed_endings' where word = 'laughter' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings', origin = 'Latin' where word = 'salary' and grade_level = 4;
+update words set pattern_primary = 'word_parts', pattern_secondary = 'double_consonants' where word = 'disappear' and grade_level = 4;
+update words set pattern_primary = 'adding_endings', pattern_secondary = 'vowel_teams_r' where word = 'hurdler' and grade_level = 4;
+update words set pattern_primary = 'soft_c_g', pattern_secondary = 'vowel_teams_r' where word = 'lounge' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings', pattern_secondary = 'soft_c_g', origin = 'French' where word = 'jovial' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings', origin = 'Latin' where word = 'inferior' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings', origin = 'Latin' where word = 'December' and grade_level = 4;
+update words set pattern_primary = 'word_parts', origin = 'Latin' where word = 'duration' and grade_level = 4;
+update words set pattern_primary = 'word_parts', pattern_secondary = 'unstressed_endings', origin = 'Latin' where word = 'dictionary' and grade_level = 4;
+update words set pattern_primary = 'tricky', pattern_secondary = 'word_parts' where word = 'business' and grade_level = 4;
+update words set pattern_primary = 'word_parts', pattern_secondary = 'long_vowels', origin = 'Latin' where word = 'reinstate' and grade_level = 4;
+update words set pattern_primary = 'unstressed_endings', origin = 'Latin' where word = 'examine' and grade_level = 4;
+update words set pattern_primary = 'vowel_teams_r', origin = 'Latin' where word = 'versus' and grade_level = 4;
+update words set pattern_primary = 'double_consonants', pattern_secondary = 'long_vowels' where word = 'lullaby' and grade_level = 4;
+update words set pattern_primary = 'double_consonants', pattern_secondary = 'unstressed_endings', origin = 'Latin' where word = 'opposite' and grade_level = 4;
+update words set pattern_primary = 'double_consonants', pattern_secondary = 'adding_endings' where word = 'tissues' and grade_level = 4;
+update words set pattern_primary = 'vowel_teams_r' where word = 'marlin' and grade_level = 4;
