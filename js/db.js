@@ -312,6 +312,19 @@ export async function recordAttempt({ sessionId, childId, wordId, submittedAnswe
   });
   if (error) throw error;
 
+  // Learn-mode word status (New/Learning/Known): a miss on the first
+  // attempt -- wrong answer or timeout -- sends the word back to
+  // "learning", even if it was "known". Independent of the flag/mastery
+  // state machine below, which only cares about eligible (non-timeout)
+  // first attempts.
+  if (isFirstAttempt && !isCorrect) {
+    try {
+      await setWordStatus(childId, wordId, "learning");
+    } catch (err) {
+      console.warn("Could not update word status (non-fatal):", err.message);
+    }
+  }
+
   // Only a first-attempt, non-timeout answer is "eligible" for mastery tracking.
   if (!isFirstAttempt || isTimeout) return;
 
@@ -395,6 +408,36 @@ export async function fetchPatterns() {
   if (error) throw error;
   patternsCache = Object.fromEntries(data.map((p) => [p.id, p]));
   return patternsCache;
+}
+
+// ---- Per-kid word status (New / Learning / Known) — Learn mode ----------
+
+/** Map of word_id -> status ("new"/"learning"/"known") for every word this
+ * child has a word_progress row for. A word absent from the map has never
+ * been touched and defaults to "new". */
+export async function fetchWordStatusMap(childId) {
+  const { data, error } = await supabase.from("word_progress").select("word_id, status").eq("child_id", childId);
+  if (error) throw error;
+  const map = {};
+  data.forEach((row) => {
+    map[row.word_id] = row.status || "new";
+  });
+  return map;
+}
+
+/**
+ * Sets a word's status for one child. Upsert only touches the columns
+ * given here (child_id, word_id, status, updated_at) -- it does not clobber
+ * miss_streak/correct_streak/flagged/last_shown_at on an existing row.
+ */
+export async function setWordStatus(childId, wordId, status) {
+  const { error } = await supabase
+    .from("word_progress")
+    .upsert(
+      { child_id: childId, word_id: wordId, status, updated_at: new Date().toISOString() },
+      { onConflict: "child_id,word_id" }
+    );
+  if (error) throw error;
 }
 
 export async function getFlaggedWords(childId) {

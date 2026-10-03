@@ -9,10 +9,13 @@ import {
   touchWordsShown,
   getSessionAttempts,
   fetchPatterns,
+  fetchWordStatusMap,
+  setWordStatus,
 } from "./db.js";
 import { playWord as playWordAudio, playSentence as playSentenceAudio, stopSpeaking } from "./tts.js";
 import { isCorrectSpelling } from "./grading.js";
 import { pickCoverageSet } from "./util.js";
+import { renderLearn } from "./learn.js";
 
 /**
  * Quiz mode (F05, F06, F07): one attempt per word, per-word countdown,
@@ -45,6 +48,51 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
       console.warn("Could not load word-coverage data, falling back to random:", err.message);
     }
     words = pickCoverageSet(allWords, lastShownMap, size);
+
+    // Quiz nudge (never a lock): if this set includes words the child has
+    // never studied, offer to study them first before starting the timer.
+    let statusMap = {};
+    try {
+      statusMap = await fetchWordStatusMap(child.id);
+    } catch (err) {
+      console.warn("Could not load word-status data (non-fatal):", err.message);
+    }
+    const newWords = words.filter((w) => (statusMap[w.id] || "new") === "new");
+
+    if (newWords.length > 0) {
+      const choice = await new Promise((resolve) => {
+        root.innerHTML = `
+          <div class="topbar">
+            <button class="btn-back" id="exit">← Home</button>
+            <div class="topbar-title"><h2>Before you start — ${child.name}</h2></div>
+          </div>
+          <div class="card">
+            <p><strong>You haven't studied ${newWords.length} of these ${words.length} words yet.</strong></p>
+            <p class="muted">That's okay — this is just a heads-up, not a requirement.</p>
+            <div class="stack" style="margin-top:12px">
+              <button class="btn-primary" id="study-first">Study them first</button>
+              <button class="btn-secondary" id="start-anyway">Start quiz anyway</button>
+            </div>
+          </div>
+        `;
+        document.getElementById("exit").onclick = () => resolve("exit");
+        document.getElementById("study-first").onclick = () => resolve("study");
+        document.getElementById("start-anyway").onclick = () => resolve("quiz");
+      });
+      if (choice === "exit") {
+        onExit();
+        return;
+      }
+      if (choice === "study") {
+        renderLearn(root, {
+          child,
+          allWords: newWords,
+          onExit: () => renderQuiz(root, { child, allWords, onExit }),
+        });
+        return;
+      }
+      // choice === "quiz": fall through and start with the same `words` set.
+    }
 
     try {
       session = await startSession(child.id, "quiz", words.length, words.map((w) => w.id));
@@ -299,24 +347,24 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
           ? `
         <div class="card">
           <h2>Words to review (${missed.length})</h2>
-          <table class="results">
-            <thead><tr><th>Word</th><th>You wrote</th><th>Meaning</th><th>Pattern</th></tr></thead>
-            <tbody>
-              ${missed
-                .map((r) => {
-                  const p = r.word.pattern_primary && patterns[r.word.pattern_primary];
-                  return `
-                <tr>
-                  <td><strong>${r.word.word}</strong></td>
-                  <td>${r.isTimeout ? "<em>time's up</em>" : escapeHtml(r.submitted)}</td>
-                  <td>${r.word.meaning || ""}</td>
-                  <td>${p ? `<div class="pattern-chip"><strong>${p.name}</strong> — ${p.tip}</div>` : ""}</td>
-                </tr>
-              `;
-                })
-                .join("")}
-            </tbody>
-          </table>
+          <div class="stack">
+            ${missed
+              .map((r, i) => {
+                const p = r.word.pattern_primary && patterns[r.word.pattern_primary];
+                return `
+              <div class="card" style="margin:0">
+                <p><strong>${r.word.word}</strong>${r.word.part_of_speech ? ` <span class="muted">(${r.word.part_of_speech})</span>` : ""}</p>
+                <p class="muted">You wrote: ${r.isTimeout ? "<em>time's up</em>" : escapeHtml(r.submitted || "")}</p>
+                ${r.word.meaning ? `<p>${r.word.meaning}</p>` : ""}
+                ${r.word.sentence ? `<p class="muted">"${r.word.sentence}"</p>` : ""}
+                ${p ? `<div class="pattern-chip"><strong>${p.name}</strong> — ${p.tip}</div>` : ""}
+                <button class="btn-link" data-add-pile="${i}" style="margin-top:8px">➕ Add to my study pile</button>
+              </div>
+            `;
+              })
+              .join("")}
+          </div>
+          <button class="btn-primary" id="study-missed" style="margin-top:14px">📖 Study my missed words</button>
         </div>
       `
           : `<div class="card"><p>Perfect set — no missed words! 🎉</p></div>`
@@ -328,6 +376,29 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
     `;
     document.getElementById("again").onclick = () => renderQuiz(root, { child, allWords, onExit });
     document.getElementById("home").onclick = onExit;
+
+    if (missed.length) {
+      root.querySelectorAll("[data-add-pile]").forEach((btn) => {
+        btn.onclick = async () => {
+          const r = missed[btn.dataset.addPile];
+          btn.textContent = "Added ✓";
+          btn.disabled = true;
+          try {
+            await setWordStatus(child.id, r.word.id, "learning");
+          } catch (err) {
+            console.warn("Could not add word to study pile:", err.message);
+          }
+        };
+      });
+      document.getElementById("study-missed").onclick = () => {
+        renderLearn(root, {
+          child,
+          allWords: missed.map((r) => r.word),
+          filterWordIds: missed.map((r) => r.word.id),
+          onExit,
+        });
+      };
+    }
   }
 
   renderQuestion();

@@ -316,6 +316,47 @@ table.results th, table.results td {
 body.kid-theme .pattern-chip { background: #ede9fe; color: #6d28d9; }
 .pattern-chip strong { font-weight: 700; }
 
+/* Home screen "X of Y words known" progress bar (Learn mode). */
+.progress-bar-wrap {
+  background: #e5e7eb;
+  border-radius: 999px;
+  height: 10px;
+  overflow: hidden;
+  margin-top: 10px;
+}
+.progress-bar-fill {
+  background: var(--study, var(--primary));
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+
+/* Learn mode: All words / Still learning toggle. */
+.filter-toggle {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+.filter-toggle button {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: #f3f4f6;
+  color: var(--ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+body.kid-theme .filter-toggle button { background: #f3e8ff; }
+.filter-toggle button.active {
+  background: var(--primary);
+  color: var(--primary-ink);
+}
+
+/* Learn mode meaning/use-it mini-quizzes: right/wrong option buttons. */
+.mcq-option { text-align: left; }
+.mcq-option.correct { background: #f0fdf4 !important; border: 2px solid var(--correct); color: var(--correct); }
+.mcq-option.incorrect { background: #fef2f2 !important; border: 2px solid var(--incorrect); color: var(--incorrect); }
+
 /* ---- Parent view: sidebar layout ------------------------------------ */
 
 .parent-layout {

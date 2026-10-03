@@ -1,6 +1,6 @@
 import { CONFIG } from "./config.js";
-import { fetchWords, fetchChildren, getFlaggedWords, getRecentSessions, findResumableSession, abandonSession } from "./db.js";
-import { renderStudy } from "./study.js";
+import { fetchWords, fetchChildren, getFlaggedWords, getRecentSessions, findResumableSession, abandonSession, fetchWordStatusMap } from "./db.js";
+import { renderLearn } from "./learn.js";
 import { renderPractice } from "./practice.js";
 import { renderQuiz } from "./quiz.js";
 import { renderParentView } from "./parent.js";
@@ -132,6 +132,14 @@ async function renderHome() {
     console.warn("Could not load flagged words:", err.message);
   }
 
+  let knownCount = null;
+  try {
+    const statusMap = await fetchWordStatusMap(state.activeChildId);
+    knownCount = words.filter((w) => statusMap[w.id] === "known").length;
+  } catch (err) {
+    console.warn("Could not load word-status counts:", err.message);
+  }
+
   let resumable = null;
   try {
     resumable = await findResumableSession(state.activeChildId);
@@ -148,6 +156,15 @@ async function renderHome() {
     <p class="muted">Grade ${child.grade_level} word list${words.length ? ` (${words.length} words)` : ""}</p>
     ${childPicker()}
     ${
+      knownCount !== null && words.length
+        ? `
+    <div class="progress-bar-wrap">
+      <div class="progress-bar-fill" style="width:${Math.round((knownCount / words.length) * 100)}%"></div>
+    </div>
+    <p class="muted" style="margin-top:4px">${knownCount} of ${words.length} words known</p>`
+        : ""
+    }
+    ${
       resumable
         ? `
     <div class="card" style="border:2px solid var(--primary)">
@@ -162,7 +179,7 @@ async function renderHome() {
         ? `<div class="card"><p><strong>No words yet for Grade ${child.grade_level}.</strong></p><p class="muted">Add words for this grade in the database, then come back.</p></div>`
         : `
     <div class="card stack">
-      <button class="btn-study" id="go-study">📖 Study (learn all ${words.length} words)</button>
+      <button class="btn-study" id="go-learn">📖 Learn (meanings, patterns &amp; sentences)</button>
       <button class="btn-primary" id="go-practice">✏️ ${resumable && resumable.mode === "practice" ? "Start a new Practice set" : "Practice"} (${Math.min(CONFIG.practiceSetSize, words.length)} words, untimed)</button>
       <button class="btn-quiz" id="go-quiz">⏱️ ${resumable && resumable.mode === "quiz" ? "Start a new Quiz" : "Quiz"} (${Math.min(CONFIG.quizSetSize, words.length)} words, timed)</button>
       <button class="btn-review" id="go-review">
@@ -194,8 +211,8 @@ async function renderHome() {
   });
 
   if (words.length) {
-    document.getElementById("go-study").onclick = () =>
-      renderStudy(root, {
+    document.getElementById("go-learn").onclick = () =>
+      renderLearn(root, {
         child,
         allWords: words,
         onExit: renderHome,
