@@ -78,12 +78,14 @@ export function buildSitting({ pool, stage1Words, labShown, weakIds, sittingsDon
   };
 }
 
-/** The held-out words for a pattern check. Each attempt takes the next
- * `size` reserved words, wrapping around, so a retry never repeats the same
- * set (with 12 reserved words and size 6 there are two distinct sets). */
+/** The held-out words for a pattern check. The reserved words (sorted by id,
+ * so easy to hard) are dealt out like cards into `sets` groups, so every set
+ * mixes all tiers, and each attempt uses the next group, wrapping around: a
+ * retry never repeats the same set (12 reserved words, size 6 = two sets). */
 export function pickCheckWords(reserved, checkAttemptsDone, size) {
   if (reserved.length <= size) return sampleUnique(reserved, reserved.length);
   const sets = Math.floor(reserved.length / size);
-  const start = (checkAttemptsDone % sets) * size;
-  return sampleUnique(reserved.slice(start, start + size), size);
+  const k = checkAttemptsDone % sets;
+  const group = reserved.filter((_, i) => i % sets === k).slice(0, size);
+  return sampleUnique(group, group.length);
 }
