@@ -19,8 +19,6 @@ import { renderPractice } from "./practice.js";
 import { renderQuiz } from "./quiz.js";
 import { renderParentView } from "./parent.js";
 import { renderShop } from "./shop.js";
-import { renderLeaderboard } from "./leaderboard.js";
-import { getCurrentSession, renderAuthGate, signOut } from "./auth.js";
 import { pickCoverageSet } from "./util.js";
 
 const root = document.getElementById("app");
@@ -303,11 +301,6 @@ async function renderHome() {
     </div>`
     }
     <button class="btn-link" id="go-parent">Parent view</button>
-    <p class="muted" style="text-align:center; margin-top:8px">
-      <button class="btn-link" id="go-leaderboard">🏆 Leaderboard</button>
-      ·
-      <button class="btn-link" id="sign-out">Not your family? Log out</button>
-    </p>
   `;
 
   if (resumable) {
@@ -394,32 +387,6 @@ async function renderHome() {
 
   document.getElementById("go-parent").onclick = () =>
     renderParentView(root, { onExit: renderHome });
-
-  document.getElementById("go-leaderboard").onclick = () =>
-    renderLeaderboard(root, { onExit: renderHome });
-
-  document.getElementById("sign-out").onclick = async () => {
-    await signOut();
-    boot();
-  };
 }
 
-/**
- * Entry point: a parent's session persists in the browser (Supabase's
- * default), so this only shows the login/signup screen when nobody's
- * signed in on this device yet -- after that, kids use Home directly, no
- * separate kid-level login (migration_008).
- */
-async function boot() {
-  state.children = null; // force a fresh fetch under whichever account is now active
-  state.activeChildId = null;
-  const session = await getCurrentSession();
-  if (session) {
-    renderHome();
-  } else {
-    const gate = renderAuthGate(root, { onAuthenticated: renderHome });
-    gate.setViewLeaderboard(() => renderLeaderboard(root, { onExit: boot }));
-  }
-}
-
-boot();
+renderHome();

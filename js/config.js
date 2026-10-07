@@ -12,6 +12,12 @@ export const CONFIG = {
   // Children now live in the `children` table (parent view can create/edit/
   // deactivate them) instead of being hardcoded here — see js/parent.js.
 
+  // Parent view is gated by this shared PIN so kids can't create accounts or
+  // change grades themselves. Change it to whatever you like and redeploy.
+  // This is a simple deterrent, not real security — there is no login system
+  // in this app (see schema.sql's note on Row Level Security).
+  parentPin: "1234",
+
   // Set sizes and timing (F02)
   practiceSetSize: 5,
   quizSetSize: 20,

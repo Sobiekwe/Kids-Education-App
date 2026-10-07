@@ -1,10 +1,8 @@
 # Spelling Practice App (Phase 1)
 
-A spelling practice and quiz app for kids, with real per-family parent
-accounts (migration_008) so multiple families can use it privately, plus an
-opt-in cross-family leaderboard. Built against
-`Spelling Bee App — Phase 1 Requirements (MVP)`. Plain HTML/CSS/JS — no
-build step, no framework install needed.
+A private, login-free spelling practice and quiz app for two kids, built
+against `Spelling Bee App — Phase 1 Requirements (MVP)`. Plain HTML/CSS/JS —
+no build step, no framework install needed.
 
 ## Staging environment
 
@@ -30,52 +28,22 @@ on `main` by default.
    Grade 4 words), then `data/migration_002_grades.sql` (adds Grades 1, 2, 3,
    5, 6 word lists, tags Grade 4 words with `grade_level`, and creates the
    `children` table with Netochukwu and Chioma carried over at Grade 4).
-2. **Config**: `js/config.js` has the Supabase URL/publishable key already
+2. **Config**: edit `js/config.js` — set `parentPin` to whatever PIN you want
+   to use to unlock Parent view. The Supabase URL/publishable key are already
    filled in. Children are no longer set here — add/edit them from Parent
    view in the running app.
 3. **Deploy**: import this repo in Vercel (no build command, no output
    directory needed — it's a static site). Every push to `main` redeploys
    automatically.
 
-## Parent accounts & family privacy (migration_008, staging only)
-
-The old shared PIN is gone. Each family now creates a real account (email +
-password, via Supabase Auth) and only ever sees their own kids — Row Level
-Security on the database enforces this server-side, not just in the app's
-UI. A parent logs in once per device; after that, kids use Home directly
-with no separate kid-level login, same as before.
-
-**One-time setup, before this works (per Supabase project):**
-
-1. **Supabase Auth settings**: Authentication → Providers → Email → turn
-   OFF "Confirm email", so a new signup can log in immediately without
-   clicking an email link. Fine for a small family/friends app.
-2. **Create the first account for the existing household**: Authentication →
-   Users → Add user (check "Auto Confirm User"), copy that user's UUID, and
-   follow the instructions at the top of `data/migration_008_families_auth.sql`
-   to attach it to the existing kids before running the migration.
-3. **Database**: run `data/migration_008_families_auth.sql`, then
-   `data/migration_009_leaderboard.sql`.
-
-New signups after that just use the in-app "Create family account" form —
-no dashboard steps needed per family.
-
-## Leaderboard (migration_009, staging only)
-
-An opt-in, cross-family leaderboard — off by default. A parent turns it on
-per family in Parent view → Children → "Show my kids on the leaderboard".
-When on, only first name, grade, points, and equipped avatar are shown,
-grouped by grade so kids are only compared within their own grade. Full
-names, quiz scores, flagged words, and time spent never appear there — those
-stay in each family's own private Reports. Reachable from Home or from the
-login screen, with or without being logged in.
-
 ## Children & grades
 
-Parent view (reachable once a parent is logged in) is where you add a
-child, name them, and assign a grade 1–6 — that grade's word list is what
-they see in Study/Practice/Quiz. Deactivating a child hides them from the
-home screen but keeps their score history.
+Parent view (PIN-gated) is where you add a child, name them, and assign a
+grade 1–6 — that grade's word list is what they see in Study/Practice/Quiz.
+Deactivating a child hides them from the home screen but keeps their score
+history. The PIN is a soft deterrent only (checked in the browser, not a real
+login) — good enough to keep kids from adding accounts themselves, not meant
+to protect sensitive data.
 
 ## Continuous learning (staging only)
 
@@ -140,15 +108,10 @@ the app but keeps any attempt history intact); "Restore" brings it back.
 - `js/app.js` — home screen and screen switching.
 - `js/practice.js` — Practice mode and Review-missed-words mode (same screen).
 - `js/quiz.js` — timed Quiz mode.
-- `js/parent.js` — parent view (reachable once logged in): create/edit/
-  deactivate children, assign grades, leaderboard opt-in, and view read-only
-  recent scores + flagged words.
-- `js/auth.js` — parent signup/login (Supabase Auth) and the login-gate
-  screen shown when no one's signed in on this device yet.
-- `js/leaderboard.js` — the opt-in cross-family leaderboard page.
+- `js/parent.js` — PIN-gated parent view: create/edit/deactivate children,
+  assign grades, and view read-only recent scores + flagged words.
 - `js/db.js` — all Supabase reads/writes, including the review flag/clear
-  state machine (requirement F10), children CRUD, and family/leaderboard
-  settings.
+  state machine (requirement F10) and children CRUD.
 - `js/tts.js` — audio playback: pre-generated Google Cloud TTS files first,
   browser text-to-speech (Web Speech API) as the fallback.
 - `api/tts.js` — Vercel serverless function; the only place the Google Cloud
@@ -156,15 +119,15 @@ the app but keeps any attempt history intact); "Restore" brings it back.
   `GOOGLE_SERVICE_ACCOUNT_JSON` environment variable — never shipped to the
   browser).
 - `js/grading.js` — binary spelling grading/normalization (F07).
-- `js/config.js` — the one file you edit to change set sizes, timer length,
-  and review-flag thresholds (F02 — no settings screen).
+- `js/config.js` — the one file you edit to change the parent PIN, set sizes,
+  timer length, and review-flag thresholds (F02 — no settings screen).
 - `data/words.js` — the Grade 4 50-word list as a JS module (kept for
   reference/regenerating the SQL seed — the live app reads from Supabase).
 - `data/grade_words.js` — starter word lists for Grades 1, 2, 3, 5, 6 (source
   for `scripts/build_grade_seed.mjs`, which generates the migration SQL).
-- `data/schema.sql`, `data/seed_words.sql`, `data/migration_002_grades.sql`
-  through `data/migration_009_leaderboard.sql` — run once in Supabase, in
-  numeric order.
+- `data/schema.sql`, `data/seed_words.sql`, `data/migration_002_grades.sql`,
+  `data/migration_003_continuity.sql`, `data/migration_004_audio.sql` — run
+  once in Supabase, in that order.
 
 ## What's intentionally NOT here (Phase 2+)
 
