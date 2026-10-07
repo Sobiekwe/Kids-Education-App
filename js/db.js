@@ -3,11 +3,15 @@ import { CONFIG } from "./config.js";
 
 // ---- Words -----------------------------------------------------------
 
+// Stage 1 = the original Study/Practice/Quiz/Review word pool. Stage 2 words
+// (migration_010) belong to the Pattern Lab and must never leak into these
+// flows, so both queries below are pinned to stage 1.
 export async function fetchWords(gradeLevel) {
   const { data, error } = await supabase
     .from("words")
     .select("*")
     .eq("grade_level", gradeLevel)
+    .eq("stage", 1)
     .eq("active", true)
     .order("id", { ascending: true });
   if (error) throw error;
@@ -20,6 +24,7 @@ export async function fetchWordsForManagement(gradeLevel) {
     .from("words")
     .select("*")
     .eq("grade_level", gradeLevel)
+    .eq("stage", 1)
     .order("word", { ascending: true });
   if (error) throw error;
   return data;
