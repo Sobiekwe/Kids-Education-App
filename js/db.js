@@ -192,10 +192,20 @@ export async function setChildActive(id, active) {
  * interrupted session can be resumed with the exact same words in the
  * exact same order (continuous-learning feature, staging).
  */
-export async function startSession(childId, mode, size, wordIds = []) {
+export async function startSession(childId, mode, size, wordIds = [], patternId = null) {
   const { data, error } = await supabase
     .from("sessions")
-    .insert({ child_id: childId, mode, size, status: "in_progress", word_ids: wordIds, current_index: 0 })
+    .insert({
+      child_id: childId,
+      mode,
+      size,
+      status: "in_progress",
+      word_ids: wordIds,
+      current_index: 0,
+      // Only sent for Pattern Lab sessions, so Stage 1 keeps working on a
+      // database that hasn't had migration_013 (the pattern_id column) yet.
+      ...(patternId ? { pattern_id: patternId } : {}),
+    })
     .select()
     .single();
   if (error) throw error;
@@ -618,4 +628,74 @@ export async function getAvgResponseMs(childId, { limit = 50 } = {}) {
   if (error) throw error;
   if (!data.length) return null;
   return Math.round(data.reduce((sum, r) => sum + r.response_ms, 0) / data.length);
+}
+
+// ---- Pattern Lab (Stage 2, migration_010 + migration_013) -----------------
+
+/** Active Stage 2 words for a grade, in id order. Stage 1 never sees these
+ * (fetchWords is pinned to stage 1). */
+export async function fetchLabWords(gradeLevel) {
+  const { data, error } = await supabase
+    .from("words")
+    .select("*")
+    .eq("grade_level", gradeLevel)
+    .eq("stage", 2)
+    .eq("active", true)
+    .order("id", { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+/** A child's completed Pattern Lab sittings and pattern checks, oldest first.
+ * Progress per pattern is derived from these rows -- there is no separate
+ * progress table to get out of sync. */
+export async function fetchLabSessions(childId) {
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("id, mode, pattern_id, score, total, completed_at")
+    .eq("child_id", childId)
+    .in("mode", ["lab", "lab_check"])
+    .eq("status", "completed")
+    .order("completed_at", { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+/** word_id -> ISO time the word was last put in a Pattern Lab sitting or
+ * check. Separate from last_shown_at (which Practice/Quiz/Learn update) so
+ * the Lab's "every original word gets its turn" rotation can't be skewed by
+ * what the child does elsewhere in the app. */
+export async function fetchLabShownMap(childId) {
+  const { data, error } = await supabase
+    .from("word_progress")
+    .select("word_id, lab_last_shown_at")
+    .eq("child_id", childId)
+    .not("lab_last_shown_at", "is", null);
+  if (error) throw error;
+  const map = {};
+  data.forEach((row) => {
+    map[row.word_id] = row.lab_last_shown_at;
+  });
+  return map;
+}
+
+/** Marks words as shown in the Lab now. Touches only lab_last_shown_at. */
+export async function touchLabShown(childId, wordIds) {
+  if (!wordIds.length) return;
+  const now = new Date().toISOString();
+  const rows = wordIds.map((wordId) => ({ child_id: childId, word_id: wordId, lab_last_shown_at: now }));
+  const { error } = await supabase.from("word_progress").upsert(rows, { onConflict: "child_id,word_id" });
+  if (error) console.warn("touchLabShown failed (non-fatal):", error.message);
+}
+
+/** Ids of the words this child is currently weakest on: flagged for review
+ * or still in "learning" status. Feeds the Lab's review picks. */
+export async function fetchWeakWordIds(childId) {
+  const { data, error } = await supabase
+    .from("word_progress")
+    .select("word_id")
+    .eq("child_id", childId)
+    .or("flagged.eq.true,status.eq.learning");
+  if (error) throw error;
+  return data.map((r) => r.word_id);
 }

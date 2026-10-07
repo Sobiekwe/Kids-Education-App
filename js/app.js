@@ -19,6 +19,7 @@ import { renderPractice } from "./practice.js";
 import { renderQuiz } from "./quiz.js";
 import { renderParentView } from "./parent.js";
 import { renderShop } from "./shop.js";
+import { renderPatternLab } from "./patternlab.js";
 import { pickCoverageSet } from "./util.js";
 
 const root = document.getElementById("app");
@@ -300,6 +301,10 @@ async function renderHome() {
       </button>
     </div>`
     }
+    <div class="card stack">
+      <button class="btn-study" id="go-lab">🧪 Pattern Lab (Stage 2)</button>
+      <p class="muted" style="margin:0">Learn the spelling patterns, then spell new words that follow them.</p>
+    </div>
     <button class="btn-link" id="go-parent">Parent view</button>
   `;
 
@@ -384,6 +389,9 @@ async function renderHome() {
 
   document.getElementById("go-shop").onclick = () =>
     renderShop(root, { child, onExit: renderHome });
+
+  document.getElementById("go-lab").onclick = () =>
+    renderPatternLab(root, { child, onExit: renderHome });
 
   document.getElementById("go-parent").onclick = () =>
     renderParentView(root, { onExit: renderHome });
