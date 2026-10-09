@@ -303,7 +303,7 @@ function showRecap(root, { data, pattern, content, back }, done) {
 function highlightHtmlText(text) {
   return text
     .split(/(\w*[\[{][^\s,.]*)/)
-    .map((part) => (/[\[{]/.test(part) ? highlightHtml(part) : escapeHtml(part))
+    .map((part) => (/[\[{]/.test(part) ? highlightHtml(part) : escapeHtml(part)))
     .join("");
 }
 
