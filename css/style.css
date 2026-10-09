@@ -458,3 +458,21 @@ body.kid-theme .avatar-card { border-color: #f3e8ff; }
 .hl-v { color: #ea580c; font-weight: 800; text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 3px; }
 .hl-e { color: #f59e0b; font-weight: 700; text-decoration: underline; text-decoration-color: #fcd34d; text-decoration-thickness: 2px; text-underline-offset: 3px; }
 .lesson-word { font-size: 1.6rem; }
+
+/* Home: two foldable stage panels. */
+.stage-panel { background: var(--card); border: 2px solid var(--border); border-radius: var(--radius); margin: 12px 0; overflow: hidden; }
+body.kid-theme .stage-panel { border-color: #f3e8ff; }
+.stage-panel.stage-1 { border-left: 8px solid var(--primary); }
+.stage-panel.stage-2 { border-left: 8px solid var(--study); }
+.stage-head { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; align-items: center; width: 100%; padding: 14px 16px; background: transparent; border: 0; text-align: left; cursor: pointer; font: inherit; color: inherit; min-height: 64px; }
+.stage-title { font-size: 1.15rem; font-weight: 800; grid-column: 1; }
+.stage-sub { grid-column: 1; color: var(--muted); font-size: 0.95rem; }
+.stage-head .progress-bar-wrap { grid-column: 1; margin: 2px 0 0; }
+.stage-chev { grid-column: 2; grid-row: 1 / span 2; font-size: 1.6rem; transition: transform 0.15s; }
+.stage-panel.open .stage-chev { transform: rotate(180deg); }
+.stage-body { display: none; padding: 4px 16px 16px; }
+.stage-panel.open .stage-body { display: block; }
+.stage-body .stack > button { min-height: 52px; font-size: 1.05rem; }
+.gate-note { border: 2px solid var(--study); border-radius: 12px; padding: 12px; }
+.continue-card { border: 2px solid var(--primary); }
+.parent-link { display: block; margin: 20px auto 8px; font-size: 0.85rem; color: var(--muted); opacity: 0.8; }
