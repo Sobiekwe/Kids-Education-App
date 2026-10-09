@@ -291,7 +291,7 @@ async function renderHome() {
         ? `
     <div class="card" style="border:2px solid var(--primary)">
       <p><strong>You have an unfinished Pattern Lab ${labResume.mode === "lab_check" ? "check" : "sitting"}</strong></p>
-      <p class="muted">Word ${(labResume.current_index || 0) + 1} of ${labResume.word_ids.length}</p>
+      <p class="muted">Picks up at the next word you haven't answered.</p>
       <button class="btn-primary" id="go-lab-resume">Continue where you left off</button>
     </div>`
         : ""

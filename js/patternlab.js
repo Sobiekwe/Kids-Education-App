@@ -116,7 +116,8 @@ function cardHtml(c, i) {
       <div class="stack">
         ${
           c.resumeInfo
-            ? `<button class="btn-study" id="cont-${i}">▶ Continue your ${c.resumeInfo.session.mode === "lab_check" ? "check" : "sitting"} — word ${c.resumeInfo.next} of ${c.resumeInfo.words.length}</button>
+            ? `<button class="btn-study" id="cont-${i}">▶ Continue your ${c.resumeInfo.session.mode === "lab_check" ? "check" : "sitting"}</button>
+        <p class="muted" style="margin:0">Picks up at the next word you haven't answered (${c.resumeInfo.words.length} words in this ${c.resumeInfo.session.mode === "lab_check" ? "check" : "sitting"}).</p>
         <button class="btn-link" id="restart-${i}">Start over with new words</button>`
             : `<button class="btn-study" id="sit-${i}">${st.passed ? "Keep practicing" : "Start a sitting"}</button>
         ${checkReady ? `<button class="btn-quiz" id="check-${i}">Take the pattern check (${CONFIG.labCheckSize} new words)</button>` : ""}`
