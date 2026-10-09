@@ -80,6 +80,12 @@ export async function renderPatternLab(root, { child, onExit }) {
     if (sit) sit.onclick = () => startSitting(root, { child, onExit, data, pattern: c.p, words: c.words, st: c.st });
     const chk = document.getElementById(`check-${i}`);
     if (chk) chk.onclick = () => startCheck(root, { child, onExit, data, pattern: c.p, words: c.words, st: c.st });
+    const gd = document.getElementById(`guide-${i}`);
+    if (gd) {
+      const back = () => renderPatternLab(root, { child, onExit });
+      gd.onclick = () =>
+        showGuide(root, { child, data, pattern: c.p, content: LAB_CONTENT[c.p.id], back, finishLabel: "Back to the Pattern Lab" }, back);
+    }
     const cont = document.getElementById(`cont-${i}`);
     if (cont) cont.onclick = () => resumeLabSession(root, { child, onExit, data, session: c.resumeInfo.session });
     const restart = document.getElementById(`restart-${i}`);
@@ -115,6 +121,7 @@ function cardHtml(c, i) {
       <p class="muted">${escapeHtml(c.p.tip)}</p>
       <p class="muted">${st.sittings} sitting${st.sittings === 1 ? "" : "s"} done${st.checks ? ` · ${st.checks} check${st.checks === 1 ? "" : "s"} taken` : ""}</p>
       <div class="stack">
+        ${LAB_CONTENT[c.p.id] ? `<button class="btn-secondary" id="guide-${i}">📖 Pattern guide</button>` : ""}
         ${
           c.resumeInfo
             ? `<button class="btn-study" id="cont-${i}">▶ Continue your ${c.resumeInfo.session.mode === "lab_check" ? "check" : "sitting"}</button>
@@ -207,9 +214,26 @@ function startSitting(root, ctx) {
 
   const content = LAB_CONTENT[pattern.id];
   if (!content) return begin();
-  // First sitting: the full lesson. Later sittings: a one-minute recap.
-  if (st.sittings === 0) showGuide(root, { data, pattern, content, back }, begin);
-  else showRecap(root, { data, pattern, content, back }, begin);
+  // Full lesson the first time this child (on this device) opens the pattern,
+  // and on a first sitting; otherwise a one-minute recap with a link to the guide.
+  if (st.sittings === 0 || !guideSeen(child.id, pattern.id)) showGuide(root, { child, data, pattern, content, back }, begin);
+  else showRecap(root, { child, data, pattern, content, back }, begin);
+}
+
+const guideKey = (childId, patternId) => `lab_guide_seen:${childId}:${patternId}`;
+function guideSeen(childId, patternId) {
+  try {
+    return localStorage.getItem(guideKey(childId, patternId)) === "1";
+  } catch {
+    return false;
+  }
+}
+function markGuideSeen(childId, patternId) {
+  try {
+    localStorage.setItem(guideKey(childId, patternId), "1");
+  } catch {
+    /* storage unavailable: the guide just shows again next time */
+  }
 }
 
 /** Plays a word: the stored audio if we have the word, else the browser voice. */
@@ -229,7 +253,8 @@ function lessonShell(title, body, backLabel = "← Pattern Lab") {
 }
 
 /** 1) The Pattern Guide: the rule, then examples from the original 50 words. */
-function showGuide(root, { data, pattern, content, back }, done) {
+function showGuide(root, { child, data, pattern, content, back, finishLabel }, done) {
+  if (child) markGuideSeen(child.id, pattern.id);
   const group = (g) =>
     content.examples
       .filter((e) => e.group === g)
@@ -258,11 +283,11 @@ function showGuide(root, { data, pattern, content, back }, done) {
     back();
   };
   root.querySelectorAll("[data-hear]").forEach((b) => (b.onclick = () => hear(data, b.dataset.hear)));
-  document.getElementById("go").onclick = () => showContrast(root, { data, pattern, content, back }, done);
+  document.getElementById("go").onclick = () => showContrast(root, { data, pattern, content, back, finishLabel }, done);
 }
 
 /** 2) Words that look similar but do not follow the pattern. */
-function showContrast(root, { data, pattern, content, back }, done) {
+function showContrast(root, { data, pattern, content, back, finishLabel }, done) {
   root.innerHTML = lessonShell(
     `${pattern.name}: not this pattern`,
     `<div class="card">
@@ -282,19 +307,21 @@ function showContrast(root, { data, pattern, content, back }, done) {
   };
   root.querySelectorAll("[data-hear]").forEach((b) => (b.onclick = () => hear(data, b.dataset.hear)));
   document.getElementById("go").onclick = () =>
-    runYesNo(root, { data, pattern, content, back, count: content.fullQuestions }, done);
+    runYesNo(root, { data, pattern, content, back, finishLabel, count: content.fullQuestions }, done);
 }
 
 /** Recap for later sittings: a few lines and a few quick questions. */
-function showRecap(root, { data, pattern, content, back }, done) {
+function showRecap(root, { child, data, pattern, content, back }, done) {
   root.innerHTML = lessonShell(
     `${pattern.name}: quick recap`,
     `<div class="card">
       <p>${highlightHtmlText(content.recap)}</p>
       <div class="row" style="margin-top:16px"><button class="btn-primary" id="go">Start the quick questions</button></div>
+      <div class="row" style="margin-top:8px"><button class="btn-link" id="full">📖 See the full guide</button></div>
     </div>`
   );
   document.getElementById("back").onclick = back;
+  document.getElementById("full").onclick = () => showGuide(root, { child, data, pattern, content, back }, done);
   document.getElementById("go").onclick = () =>
     runYesNo(root, { data, pattern, content, back, count: content.recapQuestions }, done);
 }
@@ -308,7 +335,7 @@ function highlightHtmlText(text) {
 }
 
 /** 3) Yes/no questions drawn from the bank: half "yes", half "no". Not scored, no points. */
-function runYesNo(root, { data, pattern, content, back, count }, done) {
+function runYesNo(root, { data, pattern, content, back, count, finishLabel }, done) {
   const yes = content.questions.filter((q) => q.yes);
   const no = content.questions.filter((q) => !q.yes);
   const nYes = Math.ceil(count / 2);
@@ -353,7 +380,7 @@ function runYesNo(root, { data, pattern, content, back, count }, done) {
             <div class="verdict">${right ? "✅ Yes, you got it!" : "❌ Not quite"}</div>
             <p class="lesson-word"><strong>${q.yes ? highlightHtml(q.hl) : escapeHtml(q.word)}</strong></p>
             <p>${q.yes ? "Yes, it has a long vowel." : "No, it does not have a long vowel."} ${escapeHtml(q.feedback)}</p>
-            <div class="row" style="margin-top:12px"><button class="btn-primary" id="next-q">${i + 1 < questions.length ? "Next" : "Start spelling"}</button></div>
+            <div class="row" style="margin-top:12px"><button class="btn-primary" id="next-q">${i + 1 < questions.length ? "Next" : finishLabel || "Start spelling"}</button></div>
           </div>`;
         document.getElementById("next-q").onclick = () => {
           i += 1;
