@@ -476,3 +476,4 @@ body.kid-theme .stage-panel { border-color: #f3e8ff; }
 .gate-note { border: 2px solid var(--study); border-radius: 12px; padding: 12px; }
 .continue-card { border: 2px solid var(--primary); }
 .parent-link { display: block; margin: 20px auto 8px; font-size: 0.85rem; color: var(--muted); opacity: 0.8; }
+.stage-head .progress-bar-wrap, .stage-head .progress-bar-fill { display: block; }
