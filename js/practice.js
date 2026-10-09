@@ -96,6 +96,13 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
   if (resume) {
     try {
       const pastAttempts = await getSessionAttempts(session.id);
+      if (lab) {
+        // A Lab sitting/check resumes AFTER any word already answered, so a
+        // child can't see a word's answer, leave, and get another first try
+        // (which would also double-count it).
+        const answered = new Set(pastAttempts.map((a) => a.word_id));
+        while (index < words.length && answered.has(words[index].id)) index += 1;
+      }
       pastAttempts.forEach((a) => {
         if (a.is_first_attempt) {
           attemptedFirstCount += 1;
@@ -324,7 +331,8 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
     document.getElementById("home").onclick = onExit;
   }
 
-  renderQuestion();
+  if (index >= words.length) finishSet();
+  else renderQuestion();
 }
 
 function escapeHtml(str) {

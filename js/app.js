@@ -13,13 +13,14 @@ import {
   startSession,
   completeSession,
   fetchAvatars,
+  fetchLabInProgress,
 } from "./db.js";
 import { renderLearn } from "./learn.js";
 import { renderPractice } from "./practice.js";
 import { renderQuiz } from "./quiz.js";
 import { renderParentView } from "./parent.js";
 import { renderShop } from "./shop.js";
-import { renderPatternLab } from "./patternlab.js";
+import { renderPatternLab, resumeLabSession } from "./patternlab.js";
 import { pickCoverageSet } from "./util.js";
 
 const root = document.getElementById("app");
@@ -249,6 +250,15 @@ async function renderHome() {
   const resumeWords = resumable ? resumable.word_ids.map((id) => words.find((w) => w.id === id)) : null;
   if (resumable && resumeWords.some((w) => !w)) resumable = null;
 
+  // An unfinished Pattern Lab sitting/check (newest one), offered on Home too.
+  let labResume = null;
+  try {
+    const lab = await fetchLabInProgress(state.activeChildId);
+    labResume = lab.find((x) => (x.current_index || 0) < x.word_ids.length) || null;
+  } catch (err) {
+    console.warn("Could not check for an unfinished Pattern Lab set:", err.message);
+  }
+
   root.innerHTML = `
     <h1>Spelling Practice</h1>
     <p class="muted">Grade ${child.grade_level} word list${words.length ? ` (${words.length} words)` : ""}</p>
@@ -273,6 +283,16 @@ async function renderHome() {
       <p><strong>You have an unfinished ${resumable.mode === "quiz" ? "Quiz" : "Practice"} set</strong></p>
       <p class="muted">Word ${resumable.current_index + 1} of ${resumeWords.length}</p>
       <button class="btn-primary" id="go-resume">Continue where you left off</button>
+    </div>`
+        : ""
+    }
+    ${
+      labResume
+        ? `
+    <div class="card" style="border:2px solid var(--primary)">
+      <p><strong>You have an unfinished Pattern Lab ${labResume.mode === "lab_check" ? "check" : "sitting"}</strong></p>
+      <p class="muted">Word ${(labResume.current_index || 0) + 1} of ${labResume.word_ids.length}</p>
+      <button class="btn-primary" id="go-lab-resume">Continue where you left off</button>
     </div>`
         : ""
     }
@@ -319,6 +339,11 @@ async function renderHome() {
         resume: { session: resumable, words: resumeWords },
       });
     };
+  }
+
+  if (labResume) {
+    document.getElementById("go-lab-resume").onclick = () =>
+      resumeLabSession(root, { child, onExit: renderHome, session: labResume });
   }
 
   root.querySelectorAll("[data-child]").forEach((btn) => {

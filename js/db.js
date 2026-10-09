@@ -661,6 +661,23 @@ export async function fetchLabSessions(childId) {
   return data;
 }
 
+/**
+ * Unfinished Pattern Lab sittings/checks for a child, newest first. Each row
+ * carries word_ids and current_index, so the exact set can be resumed.
+ */
+export async function fetchLabInProgress(childId) {
+  const { data, error } = await supabase
+    .from("sessions")
+    .select("*")
+    .eq("child_id", childId)
+    .in("mode", ["lab", "lab_check"])
+    .eq("status", "in_progress")
+    .not("pattern_id", "is", null)
+    .order("started_at", { ascending: false });
+  if (error) throw error;
+  return (data || []).filter((s) => s.word_ids?.length);
+}
+
 /** word_id -> ISO time the word was last put in a Pattern Lab sitting or
  * check. Separate from last_shown_at (which Practice/Quiz/Learn update) so
  * the Lab's "every original word gets its turn" rotation can't be skewed by

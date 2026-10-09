@@ -4,6 +4,8 @@ import {
   fetchWords,
   fetchLabWords,
   fetchLabSessions,
+  fetchLabInProgress,
+  abandonSession,
   fetchLabShownMap,
   fetchWeakWordIds,
   fetchWordStatusMap,
@@ -56,7 +58,8 @@ export async function renderPatternLab(root, { child, onExit }) {
     }
     const st = patternState(p.id, labSessions);
     const unlocked = earlierPassed;
-    cards.push({ p, kind: unlocked ? "open" : "locked", st, words });
+    const resumeInfo = unlocked ? resumableFor(data, p.id) : null;
+    cards.push({ p, kind: unlocked ? "open" : "locked", st, words, resumeInfo });
     if (!st.passed) earlierPassed = false;
   }
 
@@ -76,6 +79,15 @@ export async function renderPatternLab(root, { child, onExit }) {
     if (sit) sit.onclick = () => startSitting(root, { child, onExit, data, pattern: c.p, words: c.words, st: c.st });
     const chk = document.getElementById(`check-${i}`);
     if (chk) chk.onclick = () => startCheck(root, { child, onExit, data, pattern: c.p, words: c.words, st: c.st });
+    const cont = document.getElementById(`cont-${i}`);
+    if (cont) cont.onclick = () => resumeLabSession(root, { child, onExit, data, session: c.resumeInfo.session });
+    const restart = document.getElementById(`restart-${i}`);
+    if (restart)
+      restart.onclick = async () => {
+        restart.disabled = true;
+        await abandonSession(c.resumeInfo.session.id);
+        renderPatternLab(root, { child, onExit });
+      };
   });
 }
 
@@ -102,8 +114,13 @@ function cardHtml(c, i) {
       <p class="muted">${escapeHtml(c.p.tip)}</p>
       <p class="muted">${st.sittings} sitting${st.sittings === 1 ? "" : "s"} done${st.checks ? ` · ${st.checks} check${st.checks === 1 ? "" : "s"} taken` : ""}</p>
       <div class="stack">
-        <button class="btn-study" id="sit-${i}">${st.passed ? "Keep practicing" : "Start a sitting"}</button>
-        ${checkReady ? `<button class="btn-quiz" id="check-${i}">Take the pattern check (${CONFIG.labCheckSize} new words)</button>` : ""}
+        ${
+          c.resumeInfo
+            ? `<button class="btn-study" id="cont-${i}">▶ Continue your ${c.resumeInfo.session.mode === "lab_check" ? "check" : "sitting"} — word ${c.resumeInfo.next} of ${c.resumeInfo.words.length}</button>
+        <button class="btn-link" id="restart-${i}">Start over with new words</button>`
+            : `<button class="btn-study" id="sit-${i}">${st.passed ? "Keep practicing" : "Start a sitting"}</button>
+        ${checkReady ? `<button class="btn-quiz" id="check-${i}">Take the pattern check (${CONFIG.labCheckSize} new words)</button>` : ""}`
+        }
       </div>
     </div>`;
 }
@@ -131,7 +148,7 @@ function canTakeCheck(st) {
 }
 
 async function loadLabData(child) {
-  const [patterns, labWords, stage1Words, labSessions, labShown, weakIds, statusMap] = await Promise.all([
+  const [patterns, labWords, stage1Words, labSessions, labShown, weakIds, statusMap, inProgressAll] = await Promise.all([
     fetchPatterns(),
     fetchLabWords(child.grade_level),
     fetchWords(child.grade_level),
@@ -139,8 +156,16 @@ async function loadLabData(child) {
     fetchLabShownMap(child.id),
     fetchWeakWordIds(child.id).catch(() => []),
     fetchWordStatusMap(child.id).catch(() => ({})),
+    fetchLabInProgress(child.id).catch(() => []),
   ]);
-  return { patterns, labWords, stage1Words, labSessions, labShown, weakIds, statusMap };
+  // One unfinished set per pattern: keep the newest, quietly retire older
+  // leftovers so they can't reappear as "Continue" after the newest finishes.
+  const inProgress = {};
+  for (const sess of inProgressAll) {
+    if (inProgress[sess.pattern_id]) abandonSession(sess.id);
+    else inProgress[sess.pattern_id] = sess;
+  }
+  return { patterns, labWords, stage1Words, labSessions, labShown, weakIds, statusMap, inProgress };
 }
 
 // ---- A sitting -------------------------------------------------------------
@@ -339,6 +364,53 @@ function showCheckResult(root, { child, onExit, pattern, score, total }) {
     </div>`;
   document.getElementById("lab").onclick = () => renderPatternLab(root, { child, onExit });
   document.getElementById("home").onclick = onExit;
+}
+
+// ---- Resuming an unfinished sitting or check -------------------------------
+
+/** The unfinished set for a pattern, with its word objects in stored order, or
+ * null if there is none (or a word has since been removed). */
+function resumableFor(data, patternId) {
+  const session = data.inProgress?.[patternId];
+  if (!session) return null;
+  const byId = new Map([...data.labWords, ...data.stage1Words].map((w) => [w.id, w]));
+  const words = session.word_ids.map((id) => byId.get(id));
+  if (words.some((w) => !w)) return null;
+  if ((session.current_index || 0) >= words.length) return null;
+  return { session, words, next: (session.current_index || 0) + 1 };
+}
+
+/** Continue an unfinished Lab sitting or check exactly where it stopped. */
+export async function resumeLabSession(root, { child, onExit, data, session }) {
+  if (!data) {
+    try {
+      data = await loadLabData(child);
+    } catch (err) {
+      return renderPatternLab(root, { child, onExit });
+    }
+  }
+  const pattern = data.patterns[session.pattern_id];
+  const info = pattern && resumableFor(data, session.pattern_id);
+  if (!info || info.session.id !== session.id) return renderPatternLab(root, { child, onExit });
+  const back = () => renderPatternLab(root, { child, onExit });
+  const isCheck = session.mode === "lab_check";
+  renderPractice(root, {
+    child,
+    allWords: info.words,
+    mode: "practice",
+    onExit: back,
+    resume: { session: info.session, words: info.words },
+    lab: {
+      words: info.words,
+      sessionMode: session.mode,
+      patternId: pattern.id,
+      title: isCheck ? `Pattern check — ${pattern.name}` : `Pattern Lab — ${pattern.name}`,
+      noRetry: isCheck,
+      awardPoints: !isCheck,
+      onFinish: ({ score, total }) =>
+        (isCheck ? showCheckResult : showSittingResult)(root, { child, onExit, pattern, score, total }),
+    },
+  });
 }
 
 function escapeHtml(str) {
