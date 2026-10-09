@@ -13,12 +13,14 @@ import {
   startSession,
   completeSession,
   fetchAvatars,
+  fetchLabInProgress,
 } from "./db.js";
 import { renderLearn } from "./learn.js";
 import { renderPractice } from "./practice.js";
 import { renderQuiz } from "./quiz.js";
 import { renderParentView } from "./parent.js";
 import { renderShop } from "./shop.js";
+import { renderPatternLab, resumeLabSession } from "./patternlab.js";
 import { pickCoverageSet } from "./util.js";
 
 const root = document.getElementById("app");
@@ -248,6 +250,15 @@ async function renderHome() {
   const resumeWords = resumable ? resumable.word_ids.map((id) => words.find((w) => w.id === id)) : null;
   if (resumable && resumeWords.some((w) => !w)) resumable = null;
 
+  // An unfinished Pattern Lab sitting/check (newest one), offered on Home too.
+  let labResume = null;
+  try {
+    const lab = await fetchLabInProgress(state.activeChildId);
+    labResume = lab.find((x) => (x.current_index || 0) < x.word_ids.length) || null;
+  } catch (err) {
+    console.warn("Could not check for an unfinished Pattern Lab set:", err.message);
+  }
+
   root.innerHTML = `
     <h1>Spelling Practice</h1>
     <p class="muted">Grade ${child.grade_level} word list${words.length ? ` (${words.length} words)` : ""}</p>
@@ -276,6 +287,16 @@ async function renderHome() {
         : ""
     }
     ${
+      labResume
+        ? `
+    <div class="card" style="border:2px solid var(--primary)">
+      <p><strong>You have an unfinished Pattern Lab ${labResume.mode === "lab_check" ? "check" : "sitting"}</strong></p>
+      <p class="muted">Picks up at the next word you haven't answered.</p>
+      <button class="btn-primary" id="go-lab-resume">Continue where you left off</button>
+    </div>`
+        : ""
+    }
+    ${
       !words.length
         ? `<div class="card"><p><strong>No words yet for Grade ${child.grade_level}.</strong></p><p class="muted">Add words for this grade in the database, then come back.</p></div>`
         : gateLocked
@@ -300,6 +321,10 @@ async function renderHome() {
       </button>
     </div>`
     }
+    <div class="card stack">
+      <button class="btn-study" id="go-lab">🧪 Pattern Lab (Stage 2)</button>
+      <p class="muted" style="margin:0">Learn the spelling patterns, then spell new words that follow them.</p>
+    </div>
     <button class="btn-link" id="go-parent">Parent view</button>
   `;
 
@@ -314,6 +339,11 @@ async function renderHome() {
         resume: { session: resumable, words: resumeWords },
       });
     };
+  }
+
+  if (labResume) {
+    document.getElementById("go-lab-resume").onclick = () =>
+      resumeLabSession(root, { child, onExit: renderHome, session: labResume });
   }
 
   root.querySelectorAll("[data-child]").forEach((btn) => {
@@ -384,6 +414,9 @@ async function renderHome() {
 
   document.getElementById("go-shop").onclick = () =>
     renderShop(root, { child, onExit: renderHome });
+
+  document.getElementById("go-lab").onclick = () =>
+    renderPatternLab(root, { child, onExit: renderHome });
 
   document.getElementById("go-parent").onclick = () =>
     renderParentView(root, { onExit: renderHome });

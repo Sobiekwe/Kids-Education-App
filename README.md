@@ -136,3 +136,29 @@ pairing or parent recovery codes, trend charts, flashcards/multiple choice,
 Math/Science subjects. See the requirements doc's "Build in this order" and
 "Scope rule" — nothing here should be extended before the class bee without
 checking it against those first.
+
+## Pattern Lab — Stage 2 (staging only)
+
+A second stage that sits beside the original Study/Practice/Quiz flow, which
+is untouched. Stage 2 words live in the same `words` table, flagged
+`stage = 2` (migration_010, migration_012) and tiered easy/medium/hard
+(`difficulty`, migration_013); Stage 1 queries are pinned to `stage = 1`.
+
+Per pattern (only `long_vowels` has words so far; the other seven show
+"Coming soon"):
+
+1. A **sitting** is 15 words: 10 new pattern words plus 5 review words from
+   the original 50 (up to 2 the child is weakest on, the rest longest-unseen
+   in the Lab so every original word gets its turn). The rule and a few known
+   anchor words come first, then a quick "spot the pattern" round, then
+   spelling with the usual retries and 2 points per first-try-correct word.
+2. After 3 sittings, a **pattern check** of 6 held-out words (reserved from
+   sittings) with no retries. 5 of 6 passes the pattern and unlocks the next
+   one. A miss needs one more sitting before the next try, which uses a
+   different set of 6.
+
+Tunables are in `js/config.js` (`labNewWords`, `labReviewWords`,
+`labCheckSize`, `labCheckPassScore`, `labMinSittingsBeforeCheck`). Progress is
+derived from completed `sessions` rows (modes `lab` / `lab_check`, with
+`pattern_id`). Run `migration_013_pattern_lab.sql` before using it. An
+interrupted Lab sitting is not resumable yet.

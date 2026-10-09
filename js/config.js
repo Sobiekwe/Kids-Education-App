@@ -32,6 +32,17 @@ export const CONFIG = {
   // before Practice/Quiz unlock. See learn.js / app.js's gate logic.
   learnBatchSize: 10,
 
+  // Pattern Lab (Stage 2). A sitting is labNewWords new words from the
+  // pattern's pool plus labReviewWords from the original list (2 weakest,
+  // the rest longest-unseen). After labMinSittingsBeforeCheck sittings a
+  // pattern check of labCheckSize unseen words unlocks the next pattern when
+  // the child gets labCheckPassScore or more right on the first try.
+  labNewWords: 10,
+  labReviewWords: 5,
+  labCheckSize: 6,
+  labCheckPassScore: 5,
+  labMinSittingsBeforeCheck: 3,
+
   // Voice (F09). Leave null to auto-pick the clearest available US-English
   // voice. To force a specific one, open /voices.html on the device you
   // care about, listen to the options, and paste the exact name you liked
