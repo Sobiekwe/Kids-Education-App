@@ -1,7 +1,7 @@
 -- PRODUCTION PROMOTION BUNDLE for Stage 2 (Pattern Lab).
 -- Run ONCE in the PRODUCTION Supabase project's SQL Editor (project pbcenkjcxjikoupamdfb).
 -- It combines migrations 010, 012, 013, 014 (by word, not id), 015, 016, 017 (by word),
--- 018 and the elite/woven fixes, in the right order. Nothing in it uses staging ids, so it is
+-- the elite/woven fixes (018, the avatar prices, is applied separately at go-live), in the right order. Nothing in it uses staging ids, so it is
 -- safe on production. Stage 1 words, children, points and owned avatars are not changed
 -- (avatar PRICES change; owned avatars stay owned).
 -- Run it BEFORE the matching code is merged to main, or the live app's word query will fail.
@@ -78,6 +78,11 @@ values
   ('recognize', 'to know someone or something because you have seen it before.', 'I didn''t recognize my teacher without her glasses.', 'verb', 4, 2, 'stage2-patterns-2026', 'long_vowels', 'tricky', 'Latin')
 on conflict (word, grade_level) do nothing;
 
+
+-- Keep the new Stage 2 words switched OFF until the new code is live: the old live
+-- app does not know about stages and would mix them into Grade 4 practice and quizzes.
+-- Claude switches them on right after the code goes live.
+update words set active = false where stage = 2;
 
 -- ===== 3. Pattern Lab: session modes, difficulty tiers, lab clock (migration 013) =====
 alter table sessions drop constraint if exists sessions_mode_check;
@@ -431,10 +436,5 @@ update words set
   audio_sentence_url = 'https://pbcenkjcxjikoupamdfb.supabase.co/storage/v1/object/public/word-audio/25-sentence-v2.mp3'
 where word = 'woven' and grade_level = 4 and stage = 1;
 
--- ===== 10. Points rebalance: avatar prices about 4x (migration 018) =====
-update avatars a set cost = v.cost
-from (values
-  ('lion', 80), ('frog', 80), ('tiger', 120), ('koala', 120), ('owl', 160), ('unicorn', 200),
-  ('robot', 240), ('dragon', 260), ('dino', 300), ('shark', 360), ('wizard', 400), ('superhero', 480)
-) as v(id, cost)
-where a.id = v.id;
+-- (Avatar prices are NOT in this file. They change at go-live, together with the new quiz
+--  payout, from data/migration_018_avatar_prices.sql.)
