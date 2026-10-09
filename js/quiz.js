@@ -18,10 +18,10 @@ import {
 // how much of the countdown was left at submit time -- rewards accuracy
 // first, speed second, never the reverse. A streak bonus on top rewards
 // staying accurate across several words in a row.
-const QUIZ_BASE_POINTS = 5;
-const QUIZ_MAX_SPEED_BONUS = 5;
+const QUIZ_BASE_POINTS = 3;
+const QUIZ_MAX_SPEED_BONUS = 2;
 const QUIZ_STREAK_LENGTH = 5;
-const QUIZ_STREAK_BONUS = 10;
+const QUIZ_STREAK_BONUS = 5;
 import { playWord as playWordAudio, playSentence as playSentenceAudio, stopSpeaking } from "./tts.js";
 import { isCorrectSpelling } from "./grading.js";
 import { pickCoverageSet, pronHtml } from "./util.js";
