@@ -17,7 +17,7 @@ import {
 const PRACTICE_CORRECT_POINTS = 2;
 import { playWord as playWordAudio, playSentence as playSentenceAudio, stopSpeaking } from "./tts.js";
 import { isCorrectSpelling } from "./grading.js";
-import { sampleUnique, pickCoverageSet, pronHtml, PRON_KEY_HTML, softCgNote } from "./util.js";
+import { sampleUnique, pickCoverageSet, pronHtml, softCgNote } from "./util.js";
 
 /**
  * Practice mode (F04) and Review-missed-words mode (F11) share this screen:
@@ -259,7 +259,6 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
         ${earnedPoints ? `<p class="points-earned">⭐ +${PRACTICE_CORRECT_POINTS} points</p>` : ""}
         ${!correct ? `<p>You wrote: <em>${escapeHtml(value)}</em></p>` : ""}
         <p><strong>${w.word}</strong>${w.part_of_speech ? ` <span class="muted">(${w.part_of_speech})</span>` : ""}${pronHtml(w)}</p>
-        ${w.pronunciation ? PRON_KEY_HTML : ""}
         ${w.meaning ? `<p>${w.meaning}</p>` : ""}
         ${w.sentence ? `<p class="muted">"${w.sentence}"</p>` : ""}
         ${patternChipHtml(w)}
