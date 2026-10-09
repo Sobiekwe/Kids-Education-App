@@ -20,7 +20,7 @@ import { renderPractice } from "./practice.js";
 import { renderQuiz } from "./quiz.js";
 import { renderParentView } from "./parent.js";
 import { renderShop } from "./shop.js";
-import { renderPatternLab, resumeLabSession } from "./patternlab.js";
+import { renderPatternLab, resumeLabSession, labSummary } from "./patternlab.js";
 import { pickCoverageSet } from "./util.js";
 
 const root = document.getElementById("app");
@@ -259,74 +259,113 @@ async function renderHome() {
     console.warn("Could not check for an unfinished Pattern Lab set:", err.message);
   }
 
+  const stage2Summary = await labSummary(child);
+  const stageKey = `home_open_stage:${state.activeChildId}`;
+  const savedStage = (() => {
+    try {
+      return localStorage.getItem(stageKey);
+    } catch {
+      return null;
+    }
+  })();
+  // Open the panel the child used last; first visit: Stage 1 until all words are known, then Stage 2.
+  const allKnown = knownCount !== null && words.length > 0 && knownCount >= words.length;
+  const openStage = savedStage === "1" || savedStage === "2" ? savedStage : allKnown ? "2" : "1";
+  const pct = knownCount !== null && words.length ? Math.round((knownCount / words.length) * 100) : 0;
+
+  const stage1Body = !words.length
+    ? `<p><strong>No words yet for Grade ${child.grade_level}.</strong></p><p class="muted">Add words for this grade in the database, then come back.</p>`
+    : gateLocked
+    ? `
+      <div class="gate-note">
+        <p><strong>📚 Learn today's words first</strong></p>
+        <p class="muted">${gateDueWords.length} word${gateDueWords.length === 1 ? "" : "s"} to learn — Practice and Quiz unlock once they're all known.</p>
+        <button class="btn-study" id="go-gated-learn">Start today's words</button>
+      </div>
+      <div class="stack" style="margin-top:12px">
+        <button class="btn-review" id="go-review">
+          🚩 Review missed words ${flagged.length ? `<span class="flag-pill">${flagged.length}</span>` : ""}
+        </button>
+      </div>`
+    : `
+      <div class="stack">
+        <button class="btn-study" id="go-learn">📖 Learn (meanings, patterns &amp; sentences)</button>
+        <button class="btn-primary" id="go-practice">✏️ ${resumable && resumable.mode === "practice" ? "Start a new Practice set" : "Practice"} (${Math.min(CONFIG.practiceSetSize, words.length)} words, untimed)</button>
+        <button class="btn-quiz" id="go-quiz">⏱️ ${resumable && resumable.mode === "quiz" ? "Start a new Quiz" : "Quiz"} (${Math.min(CONFIG.quizSetSize, words.length)} words, timed)</button>
+        <button class="btn-review" id="go-review">
+          🚩 Review missed words ${flagged.length ? `<span class="flag-pill">${flagged.length}</span>` : ""}
+        </button>
+      </div>`;
+
   root.innerHTML = `
     <h1>Spelling Practice</h1>
-    <p class="muted">Grade ${child.grade_level} word list${words.length ? ` (${words.length} words)` : ""}</p>
     ${childPicker(avatarMap)}
     <div class="points-badge">
       <span>⭐ <strong>${child.points_balance || 0}</strong> points</span>
       <button class="btn-link" id="go-shop">🛍️ Shop</button>
     </div>
     ${
-      knownCount !== null && words.length
+      resumable || labResume
         ? `
-    <div class="progress-bar-wrap">
-      <div class="progress-bar-fill" style="width:${Math.round((knownCount / words.length) * 100)}%"></div>
-    </div>
-    <p class="muted" style="margin-top:4px">${knownCount} of ${words.length} words known</p>`
-        : ""
-    }
-    ${
-      resumable
-        ? `
-    <div class="card" style="border:2px solid var(--primary)">
-      <p><strong>You have an unfinished ${resumable.mode === "quiz" ? "Quiz" : "Practice"} set</strong></p>
-      <p class="muted">Word ${resumable.current_index + 1} of ${resumeWords.length}</p>
-      <button class="btn-primary" id="go-resume">Continue where you left off</button>
+    <div class="card continue-card">
+      <p><strong>▶ Continue where you left off</strong></p>
+      <div class="stack">
+        ${resumable ? `<button class="btn-primary" id="go-resume">${resumable.mode === "quiz" ? "⏱️ Quiz" : "✏️ Practice"} — word ${resumable.current_index + 1} of ${resumeWords.length}</button>` : ""}
+        ${labResume ? `<button class="btn-primary" id="go-lab-resume">🧪 Pattern Lab ${labResume.mode === "lab_check" ? "check" : "sitting"}</button>` : ""}
+      </div>
     </div>`
         : ""
     }
-    ${
-      labResume
-        ? `
-    <div class="card" style="border:2px solid var(--primary)">
-      <p><strong>You have an unfinished Pattern Lab ${labResume.mode === "lab_check" ? "check" : "sitting"}</strong></p>
-      <p class="muted">Picks up at the next word you haven't answered.</p>
-      <button class="btn-primary" id="go-lab-resume">Continue where you left off</button>
-    </div>`
-        : ""
-    }
-    ${
-      !words.length
-        ? `<div class="card"><p><strong>No words yet for Grade ${child.grade_level}.</strong></p><p class="muted">Add words for this grade in the database, then come back.</p></div>`
-        : gateLocked
-        ? `
-    <div class="card" style="border:2px solid var(--study, var(--primary))">
-      <p><strong>📚 Learn today's words first</strong></p>
-      <p class="muted">${gateDueWords.length} word${gateDueWords.length === 1 ? "" : "s"} to learn — Practice and Quiz unlock once they're all known.</p>
-      <button class="btn-study" id="go-gated-learn">Start today's words</button>
-    </div>
-    <div class="card stack">
-      <button class="btn-review" id="go-review">
-        🚩 Review missed words ${flagged.length ? `<span class="flag-pill">${flagged.length}</span>` : ""}
+    <section class="stage-panel stage-1 ${openStage === "1" ? "open" : ""}" data-stage="1">
+      <button class="stage-head" aria-expanded="${openStage === "1"}" data-toggle="1">
+        <span class="stage-title">⭐ Stage 1 · Grade ${child.grade_level} words</span>
+        <span class="stage-sub">${knownCount !== null && words.length ? `${knownCount} of ${words.length} words known` : "Learn, practice and quiz"}</span>
+        ${knownCount !== null && words.length ? `<span class="progress-bar-wrap"><span class="progress-bar-fill" style="width:${pct}%"></span></span>` : ""}
+        <span class="stage-chev" aria-hidden="true">▾</span>
       </button>
-    </div>`
-        : `
-    <div class="card stack">
-      <button class="btn-study" id="go-learn">📖 Learn (meanings, patterns &amp; sentences)</button>
-      <button class="btn-primary" id="go-practice">✏️ ${resumable && resumable.mode === "practice" ? "Start a new Practice set" : "Practice"} (${Math.min(CONFIG.practiceSetSize, words.length)} words, untimed)</button>
-      <button class="btn-quiz" id="go-quiz">⏱️ ${resumable && resumable.mode === "quiz" ? "Start a new Quiz" : "Quiz"} (${Math.min(CONFIG.quizSetSize, words.length)} words, timed)</button>
-      <button class="btn-review" id="go-review">
-        🚩 Review missed words ${flagged.length ? `<span class="flag-pill">${flagged.length}</span>` : ""}
+      <div class="stage-body" data-stage-body="1">${stage1Body}</div>
+    </section>
+    <section class="stage-panel stage-2 ${openStage === "2" ? "open" : ""}" data-stage="2">
+      <button class="stage-head" aria-expanded="${openStage === "2"}" data-toggle="2">
+        <span class="stage-title">🧪 Stage 2 · Pattern Lab</span>
+        <span class="stage-sub">${stage2Summary}</span>
+        <span class="stage-chev" aria-hidden="true">▾</span>
       </button>
-    </div>`
-    }
-    <div class="card stack">
-      <button class="btn-study" id="go-lab">🧪 Pattern Lab (Stage 2)</button>
-      <p class="muted" style="margin:0">Learn the spelling patterns, then spell new words that follow them.</p>
-    </div>
-    <button class="btn-link" id="go-parent">Parent view</button>
+      <div class="stage-body" data-stage-body="2">
+        <p class="muted" style="margin-top:0">Learn the spelling patterns, then spell new words that follow them.</p>
+        <button class="btn-study" id="go-lab">🧪 Open the Pattern Lab</button>
+      </div>
+    </section>
+    <button class="btn-link parent-link" id="go-parent">🔒 Parent view</button>
   `;
+
+  // Fold / unfold the two stage panels (one open at a time), remembered per child on this device.
+  const rememberStage = (n) => {
+    try {
+      localStorage.setItem(stageKey, n);
+    } catch {
+      /* ignore: the default rule applies next time */
+    }
+  };
+  root.querySelectorAll("[data-toggle]").forEach((head) => {
+    head.onclick = () => {
+      const n = head.dataset.toggle;
+      const panel = head.closest(".stage-panel");
+      const willOpen = !panel.classList.contains("open");
+      root.querySelectorAll(".stage-panel").forEach((p) => {
+        const open = willOpen && p === panel;
+        p.classList.toggle("open", open);
+        p.querySelector("[data-toggle]").setAttribute("aria-expanded", String(open));
+      });
+      if (willOpen) rememberStage(n);
+    };
+  });
+  // Using something inside a panel makes it the one shown next time.
+  root.querySelectorAll("[data-stage-body]").forEach((el) => {
+    el.addEventListener("click", (e) => {
+      if (e.target.closest("button")) rememberStage(el.dataset.stageBody);
+    });
+  });
 
   if (resumable) {
     document.getElementById("go-resume").onclick = () => {

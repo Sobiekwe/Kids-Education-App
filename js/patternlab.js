@@ -28,6 +28,31 @@ import { LAB_CONTENT } from "./labcontent.js";
  * sessions rows (mode "lab" / "lab_check"), so there is nothing else to sync.
  */
 
+/** One short line for the Home screen's Stage 2 panel, e.g. "Long vowels · 1 of 3 sittings". */
+export async function labSummary(child) {
+  try {
+    const [patterns, sessions] = await Promise.all([fetchPatterns(), fetchLabSessions(child.id)]);
+    const list = Object.values(patterns)
+      .filter((p) => LAB_CONTENT[p.id])
+      .sort((a, b) => a.sort_order - b.sort_order);
+    if (!list.length) return "Learn spelling patterns";
+    for (const p of list) {
+      const st = patternState(p.id, sessions);
+      if (st.passed) continue;
+      const need = CONFIG.labMinSittingsBeforeCheck;
+      const status = canTakeCheck(st)
+        ? "check ready"
+        : st.checks > 0
+        ? "do a sitting, then retry the check"
+        : `${Math.min(st.sittings, need)} of ${need} sittings`;
+      return `${p.name} · ${status}`;
+    }
+    return "All current patterns passed ✅";
+  } catch {
+    return "Learn spelling patterns";
+  }
+}
+
 export async function renderPatternLab(root, { child, onExit }) {
   document.body.classList.add("kid-theme");
   root.innerHTML = `<p class="muted">Loading…</p>`;
