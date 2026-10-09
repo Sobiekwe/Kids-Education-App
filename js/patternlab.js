@@ -13,8 +13,9 @@ import {
 } from "./db.js";
 import { renderPractice } from "./practice.js";
 import { splitReserved, buildSitting, pickCheckWords } from "./labselect.js";
-import { sampleUnique } from "./util.js";
+import { sampleUnique, highlightHtml } from "./util.js";
 import { playWord, stopSpeaking } from "./tts.js";
+import { LAB_CONTENT } from "./labcontent.js";
 
 /**
  * Pattern Lab (Stage 2). One lesson per spelling pattern:
@@ -183,103 +184,176 @@ function startSitting(root, ctx) {
     newCount: CONFIG.labNewWords,
     reviewCount: CONFIG.labReviewWords,
   });
-
   const back = () => renderPatternLab(root, { child, onExit });
-  const anchors = pickAnchors(data, pattern.id);
 
-  // 1) The rule, with words they already know.
-  root.innerHTML = `
-    <div class="topbar">
-      <button class="btn-back" id="back">← Pattern Lab</button>
-      <div class="topbar-title"><h2>${escapeHtml(pattern.name)}</h2></div>
-    </div>
-    <div class="card">
-      <p><strong>The rule</strong></p>
-      <p>${escapeHtml(pattern.tip)}</p>
-      ${
-        anchors.length
-          ? `<p class="muted" style="margin-top:12px">You already know words like these:</p>
-        <div class="stack">${anchors
-          .map((w) => `<div class="pattern-chip"><strong>${escapeHtml(w.word)}</strong> — ${escapeHtml(w.meaning || "")}</div>`)
-          .join("")}</div>`
-          : ""
-      }
-      <div class="row" style="margin-top:16px"><button class="btn-primary" id="go">Spot the pattern</button></div>
-    </div>`;
-  document.getElementById("back").onclick = back;
-  document.getElementById("go").onclick = () => {
-    const spotWords = sampleUnique(sitting.fresh, Math.min(4, sitting.fresh.length));
-    runSpot(root, { patterns: data.patterns, words: spotWords, pattern, back }, async () => {
-      // 2) The 15-word spelling round.
-      await touchLabShown(child.id, sitting.words.map((w) => w.id));
-      renderPractice(root, {
-        child,
-        allWords: sitting.words,
-        mode: "practice",
-        onExit: back,
-        lab: {
-          words: sitting.words,
-          sessionMode: "lab",
-          patternId: pattern.id,
-          title: `Pattern Lab — ${pattern.name}`,
-          awardPoints: true,
-          onFinish: ({ score, total }) => showSittingResult(root, { child, onExit, pattern, score, total }),
-        },
-      });
+  // The 15-word spelling round (after the lesson).
+  const begin = async () => {
+    await touchLabShown(child.id, sitting.words.map((w) => w.id));
+    renderPractice(root, {
+      child,
+      allWords: sitting.words,
+      mode: "practice",
+      onExit: back,
+      lab: {
+        words: sitting.words,
+        sessionMode: "lab",
+        patternId: pattern.id,
+        title: `Pattern Lab — ${pattern.name}`,
+        awardPoints: true,
+        onFinish: ({ score, total }) => showSittingResult(root, { child, onExit, pattern, score, total }),
+      },
     });
   };
+
+  const content = LAB_CONTENT[pattern.id];
+  if (!content) return begin();
+  // First sitting: the full lesson. Later sittings: a one-minute recap.
+  if (st.sittings === 0) showGuide(root, { data, pattern, content, back }, begin);
+  else showRecap(root, { data, pattern, content, back }, begin);
 }
 
-/** Up to 4 original-list words that follow this pattern, preferring ones the child already knows. */
-function pickAnchors(data, patternId) {
-  const tagged = data.stage1Words.filter((w) => w.pattern_primary === patternId);
-  const known = tagged.filter((w) => data.statusMap[w.id] === "known");
-  const rest = tagged.filter((w) => data.statusMap[w.id] !== "known");
-  return [...sampleUnique(known, 4), ...sampleUnique(rest, 4)].slice(0, 4);
+/** Plays a word: the stored audio if we have the word, else the browser voice. */
+function hear(data, text) {
+  const all = [...data.labWords, ...data.stage1Words];
+  const w = all.find((x) => x.word === text) || { word: text };
+  return playWord(w).catch(() => {});
 }
 
-/** "Which pattern is this?" — a few quick questions, no points, always shows the tip afterward. */
-function runSpot(root, { patterns, words, pattern, back }, done) {
-  const others = Object.values(patterns).filter((p) => p.id !== pattern.id);
+function lessonShell(title, body, backLabel = "← Pattern Lab") {
+  return `
+    <div class="topbar">
+      <button class="btn-back" id="back">${backLabel}</button>
+      <div class="topbar-title"><h2>${escapeHtml(title)}</h2></div>
+    </div>
+    ${body}`;
+}
+
+/** 1) The Pattern Guide: the rule, then examples from the original 50 words. */
+function showGuide(root, { data, pattern, content, back }, done) {
+  const group = (g) =>
+    content.examples
+      .filter((e) => e.group === g)
+      .map(
+        (e) => `<div class="pattern-chip" style="display:block">
+          <span class="lesson-word">${highlightHtml(e.hl)}</span>
+          <button class="btn-link" data-hear="${escapeHtml(e.word)}">🔊 Hear it</button><br>
+          <span>${escapeHtml(e.note)}</span></div>`
+      )
+      .join("");
+  root.innerHTML = lessonShell(
+    `${pattern.name}: the guide`,
+    `<div class="card">
+      <p><strong>The rule</strong></p>
+      <p>${escapeHtml(content.rule)}</p>
+      <p class="muted" style="margin-top:12px">With a silent e — from the words you already know:</p>
+      <div class="stack">${group("silent")}</div>
+      <p class="muted" style="margin-top:12px">Other ways to spell a long vowel:</p>
+      <div class="stack">${group("other")}</div>
+      <p class="muted" style="margin-top:12px"><span class="hl-v">Colored letters</span> say the long vowel. The <span class="hl-e">lighter letter</span> is the silent e.</p>
+      <div class="row" style="margin-top:16px"><button class="btn-primary" id="go">Next: what is not a long vowel</button></div>
+    </div>`
+  );
+  document.getElementById("back").onclick = () => {
+    stopSpeaking();
+    back();
+  };
+  root.querySelectorAll("[data-hear]").forEach((b) => (b.onclick = () => hear(data, b.dataset.hear)));
+  document.getElementById("go").onclick = () => showContrast(root, { data, pattern, content, back }, done);
+}
+
+/** 2) Words that look similar but do not follow the pattern. */
+function showContrast(root, { data, pattern, content, back }, done) {
+  root.innerHTML = lessonShell(
+    `${pattern.name}: not this pattern`,
+    `<div class="card">
+      <p><strong>These words do NOT have a long vowel</strong></p>
+      <div class="stack">${content.contrast
+        .map(
+          (c) => `<div class="pattern-chip" style="display:block"><strong class="lesson-word">${escapeHtml(c.word)}</strong>
+          <button class="btn-link" data-hear="${escapeHtml(c.word)}">🔊 Hear it</button><br>${escapeHtml(c.why)}</div>`
+        )
+        .join("")}</div>
+      <div class="row" style="margin-top:16px"><button class="btn-primary" id="go">Try some yes/no questions</button></div>
+    </div>`
+  );
+  document.getElementById("back").onclick = () => {
+    stopSpeaking();
+    back();
+  };
+  root.querySelectorAll("[data-hear]").forEach((b) => (b.onclick = () => hear(data, b.dataset.hear)));
+  document.getElementById("go").onclick = () =>
+    runYesNo(root, { data, pattern, content, back, count: content.fullQuestions }, done);
+}
+
+/** Recap for later sittings: a few lines and a few quick questions. */
+function showRecap(root, { data, pattern, content, back }, done) {
+  root.innerHTML = lessonShell(
+    `${pattern.name}: quick recap`,
+    `<div class="card">
+      <p>${highlightHtmlText(content.recap)}</p>
+      <div class="row" style="margin-top:16px"><button class="btn-primary" id="go">Start the quick questions</button></div>
+    </div>`
+  );
+  document.getElementById("back").onclick = back;
+  document.getElementById("go").onclick = () =>
+    runYesNo(root, { data, pattern, content, back, count: content.recapQuestions }, done);
+}
+
+/** Highlights bracketed examples inside a sentence, escaping everything else. */
+function highlightHtmlText(text) {
+  return text
+    .split(/(\w*[\[{][^\s,.]*)/)
+    .map((part) => (/[\[{]/.test(part) ? highlightHtml(part) : escapeHtml(part))
+    .join("");
+}
+
+/** 3) Yes/no questions drawn from the bank: half "yes", half "no". Not scored, no points. */
+function runYesNo(root, { data, pattern, content, back, count }, done) {
+  const yes = content.questions.filter((q) => q.yes);
+  const no = content.questions.filter((q) => !q.yes);
+  const nYes = Math.ceil(count / 2);
+  const questions = sampleUnique(
+    [...sampleUnique(yes, nYes), ...sampleUnique(no, count - nYes)],
+    count
+  );
   let i = 0;
 
   function ask() {
-    if (i >= words.length) return done();
-    const w = words[i];
-    const choices = sampleUnique([pattern, ...sampleUnique(others, 2)], 3);
-    root.innerHTML = `
-      <div class="topbar">
-        <button class="btn-back" id="back">← Pattern Lab</button>
-        <div class="topbar-title"><h2>Spot the pattern</h2></div>
-      </div>
-      <div class="card">
-        <p class="muted">Question ${i + 1} of ${words.length}</p>
-        <p style="font-size:1.8rem; margin:8px 0"><strong>${escapeHtml(w.word)}</strong></p>
+    if (i >= questions.length) return done();
+    const q = questions[i];
+    root.innerHTML = lessonShell(
+      `${pattern.name}: yes or no?`,
+      `<div class="card">
+        <p class="muted">Question ${i + 1} of ${questions.length}</p>
+        <p style="font-size:1.8rem; margin:8px 0"><strong>${escapeHtml(q.word)}</strong></p>
         <div class="row" style="margin-bottom:12px"><button class="icon-btn" id="hear">🔊 Hear it</button></div>
-        <p>Which pattern does this word follow?</p>
-        <div class="stack" id="choices">
-          ${choices.map((c) => `<button class="btn-secondary" data-id="${c.id}">${escapeHtml(c.name)}</button>`).join("")}
+        <p>Does this word have a long vowel, like the ones in the guide?</p>
+        <div class="row" id="choices">
+          <button class="btn-secondary" data-answer="yes">Yes</button>
+          <button class="btn-secondary" data-answer="no">No</button>
         </div>
         <div id="fb"></div>
-      </div>`;
+      </div>`
+    );
     document.getElementById("back").onclick = () => {
       stopSpeaking();
       back();
     };
-    const hear = () => playWord(w).catch(() => {});
-    document.getElementById("hear").onclick = hear;
-    hear();
-    root.querySelectorAll("#choices [data-id]").forEach((btn) => {
+    const say = () => hear(data, q.word);
+    document.getElementById("hear").onclick = say;
+    say();
+    root.querySelectorAll("#choices [data-answer]").forEach((btn) => {
       btn.onclick = () => {
-        const right = btn.dataset.id === pattern.id;
+        const saidYes = btn.dataset.answer === "yes";
+        const right = saidYes === q.yes;
         root.querySelectorAll("#choices button").forEach((b) => (b.disabled = true));
         stopSpeaking();
         document.getElementById("fb").innerHTML = `
           <div class="feedback ${right ? "correct" : "incorrect"}" style="margin-top:12px">
-            <div class="verdict">${right ? "✅ Yes!" : "❌ Not quite"}</div>
-            <p><strong>${escapeHtml(w.word)}</strong> follows <strong>${escapeHtml(pattern.name)}</strong>.</p>
-            <p class="muted">${escapeHtml(pattern.tip)}</p>
-            <div class="row" style="margin-top:12px"><button class="btn-primary" id="next-q">${i + 1 < words.length ? "Next" : "Start spelling"}</button></div>
+            <div class="verdict">${right ? "✅ Yes, you got it!" : "❌ Not quite"}</div>
+            <p class="lesson-word"><strong>${q.yes ? highlightHtml(q.hl) : escapeHtml(q.word)}</strong></p>
+            <p>${q.yes ? "Yes, it has a long vowel." : "No, it does not have a long vowel."} ${escapeHtml(q.feedback)}</p>
+            <div class="row" style="margin-top:12px"><button class="btn-primary" id="next-q">${i + 1 < questions.length ? "Next" : "Start spelling"}</button></div>
           </div>`;
         document.getElementById("next-q").onclick = () => {
           i += 1;

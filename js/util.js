@@ -142,3 +142,16 @@ export function softCgNote(word) {
   const esc = (t) => t.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
   return `In <strong>${esc(word)}</strong>, the <strong>${letter}</strong> comes before <strong>${next}</strong>, so it says <strong>${sound}</strong>.`;
 }
+
+
+/**
+ * Turns a highlight string into colored HTML. [ ] marks the long vowel letters
+ * (color + underline) and { } marks the silent e (lighter underline).
+ * "c[a]k{e}" -> c<span class="hl-v">a</span>k<span class="hl-e">e</span>
+ */
+export function highlightHtml(hl) {
+  const esc = (t) => t.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  return esc(hl)
+    .replace(/\[([^\]]+)\]/g, '<span class="hl-v">$1</span>')
+    .replace(/\{([^}]+)\}/g, '<span class="hl-e">$1</span>');
+}

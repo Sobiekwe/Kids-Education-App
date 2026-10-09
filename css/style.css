@@ -453,3 +453,8 @@ body.kid-theme .avatar-card { border-color: #f3e8ff; }
 }
 
 .pron-key { font-size: 0.8rem; margin: 2px 0 8px; }
+
+/* Pattern letters: the long vowel in color + underline, the silent e lighter. */
+.hl-v { color: #ea580c; font-weight: 800; text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 3px; }
+.hl-e { color: #f59e0b; font-weight: 700; text-decoration: underline; text-decoration-color: #fcd34d; text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.lesson-word { font-size: 1.6rem; }
