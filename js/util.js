@@ -114,3 +114,31 @@ export function csvRowsToWords(rows) {
     })
     .filter((w) => w.word);
 }
+
+
+/** " [ˈri-jəd]" — Merriam-Webster's respelling, shown after the part of speech. */
+export function pronHtml(w) {
+  if (!w || !w.pronunciation) return "";
+  const div = document.createElement("div");
+  div.textContent = w.pronunciation;
+  return ` <span class="muted">[${div.innerHTML}]</span>`;
+}
+
+/** One-line key for the symbols in the respelling above. */
+export const PRON_KEY_HTML =
+  '<p class="muted pron-key">In [ ]: ˈ marks the loudest beat, and ə is the quiet "uh" sound.</p>';
+
+/**
+ * For a Soft c and g word, a precise sentence about the letter that matters:
+ * "In rigid, the g comes before i, so it says j." Returns "" if the word has
+ * no c or g before e, i, or y (so the caller just shows the general tip).
+ */
+export function softCgNote(word) {
+  const m = /([cg])([eiy])/i.exec(word || "");
+  if (!m) return "";
+  const letter = m[1].toLowerCase();
+  const next = m[2].toLowerCase();
+  const sound = letter === "c" ? "s" : "j";
+  const esc = (t) => t.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  return `In <strong>${esc(word)}</strong>, the <strong>${letter}</strong> comes before <strong>${next}</strong>, so it says <strong>${sound}</strong>.`;
+}

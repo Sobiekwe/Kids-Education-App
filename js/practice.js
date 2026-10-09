@@ -17,7 +17,7 @@ import {
 const PRACTICE_CORRECT_POINTS = 2;
 import { playWord as playWordAudio, playSentence as playSentenceAudio, stopSpeaking } from "./tts.js";
 import { isCorrectSpelling } from "./grading.js";
-import { sampleUnique, pickCoverageSet } from "./util.js";
+import { sampleUnique, pickCoverageSet, pronHtml, PRON_KEY_HTML, softCgNote } from "./util.js";
 
 /**
  * Practice mode (F04) and Review-missed-words mode (F11) share this screen:
@@ -121,7 +121,8 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
   function patternChipHtml(w) {
     const p = w.pattern_primary && patterns[w.pattern_primary];
     if (!p) return "";
-    return `<div class="pattern-chip"><strong>${p.name}</strong> — ${p.tip}</div>`;
+    const note = w.pattern_primary === "soft_c_g" ? softCgNote(w.word) : "";
+    return `<div class="pattern-chip"><strong>${p.name}</strong> — ${p.tip}${note ? `<br>${note}` : ""}</div>`;
   }
 
   async function playWord() {
@@ -257,7 +258,8 @@ export async function renderPractice(root, { child, allWords, mode, onExit, noti
         <div class="verdict">${correct ? "✅ Correct!" : "❌ Not quite"}</div>
         ${earnedPoints ? `<p class="points-earned">⭐ +${PRACTICE_CORRECT_POINTS} points</p>` : ""}
         ${!correct ? `<p>You wrote: <em>${escapeHtml(value)}</em></p>` : ""}
-        <p><strong>${w.word}</strong>${w.part_of_speech ? ` <span class="muted">(${w.part_of_speech})</span>` : ""}</p>
+        <p><strong>${w.word}</strong>${w.part_of_speech ? ` <span class="muted">(${w.part_of_speech})</span>` : ""}${pronHtml(w)}</p>
+        ${w.pronunciation ? PRON_KEY_HTML : ""}
         ${w.meaning ? `<p>${w.meaning}</p>` : ""}
         ${w.sentence ? `<p class="muted">"${w.sentence}"</p>` : ""}
         ${patternChipHtml(w)}

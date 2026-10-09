@@ -1,6 +1,6 @@
 import { fetchPatterns, fetchWordStatusMap, setWordStatus, awardPoints } from "./db.js";
 import { playWord, playSentence, stopSpeaking } from "./tts.js";
-import { sampleUnique } from "./util.js";
+import { sampleUnique, pronHtml } from "./util.js";
 
 // Points for a word that goes from not-known to known: self-marked "I know
 // it" AND surviving both mini-quizzes. Only paid out on that transition (see
@@ -227,7 +227,7 @@ export async function renderLearn(root, { child, allWords, onExit, filterWordIds
         <p class="muted">${progressLabel()}</p>
         <div style="text-align:center; margin:12px 0">
           <div style="font-size:1.8rem; font-weight:800">${w.word}</div>
-          ${w.part_of_speech ? `<span class="muted">(${w.part_of_speech})</span>` : ""}
+          ${w.part_of_speech ? `<span class="muted">(${w.part_of_speech})</span>` : ""}${pronHtml(w)}
         </div>
         <div class="row" style="margin-bottom:12px">
           <button class="icon-btn" id="repeat">🔁 Repeat word</button>

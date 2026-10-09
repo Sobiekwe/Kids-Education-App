@@ -24,7 +24,7 @@ const QUIZ_STREAK_LENGTH = 5;
 const QUIZ_STREAK_BONUS = 10;
 import { playWord as playWordAudio, playSentence as playSentenceAudio, stopSpeaking } from "./tts.js";
 import { isCorrectSpelling } from "./grading.js";
-import { pickCoverageSet } from "./util.js";
+import { pickCoverageSet, pronHtml } from "./util.js";
 import { renderLearn } from "./learn.js";
 
 /**
@@ -379,7 +379,7 @@ export async function renderQuiz(root, { child, allWords, onExit, resume }) {
                 const p = r.word.pattern_primary && patterns[r.word.pattern_primary];
                 return `
               <div class="card" style="margin:0">
-                <p><strong>${r.word.word}</strong>${r.word.part_of_speech ? ` <span class="muted">(${r.word.part_of_speech})</span>` : ""}</p>
+                <p><strong>${r.word.word}</strong>${r.word.part_of_speech ? ` <span class="muted">(${r.word.part_of_speech})</span>` : ""}${pronHtml(r.word)}</p>
                 <p class="muted">You wrote: ${r.isTimeout ? "<em>time's up</em>" : escapeHtml(r.submitted || "")}</p>
                 ${r.word.meaning ? `<p>${r.word.meaning}</p>` : ""}
                 ${r.word.sentence ? `<p class="muted">"${r.word.sentence}"</p>` : ""}

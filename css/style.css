@@ -451,3 +451,5 @@ body.kid-theme .avatar-card { border-color: #f3e8ff; }
   flex: 1;
   min-width: 0;
 }
+
+.pron-key { font-size: 0.8rem; margin: 2px 0 8px; }
